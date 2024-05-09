@@ -1,0 +1,69 @@
+Model for Ascent
+Accuracy: 0.6058
+Precision: 0.6033
+Recall: 0.5771
+F1 Score: 0.5899
+ROC AUC Score: 0.6426
+Model for Bind
+Accuracy: 0.5748
+Precision: 0.3825
+Recall: 0.9007
+F1 Score: 0.5370
+ROC AUC Score: 0.7631
+Model for Breeze
+Accuracy: 0.6718
+Precision: 0.2931
+Recall: 0.9315
+F1 Score: 0.4459
+ROC AUC Score: 0.8270
+Model for Fracture
+Accuracy: 0.6583
+Precision: 0.3176
+Recall: 0.9759
+F1 Score: 0.4793
+ROC AUC Score: 0.8560
+Model for Haven
+Accuracy: 0.6893
+Precision: 0.5338
+Recall: 0.9171
+F1 Score: 0.6748
+ROC AUC Score: 0.7995
+Model for Icebox
+Accuracy: 0.6447
+Precision: 0.3931
+Recall: 0.9421
+F1 Score: 0.5547
+ROC AUC Score: 0.7950
+Model for Lotus
+Accuracy: 0.6272
+Precision: 0.5992
+Recall: 0.6434
+F1 Score: 0.6206
+ROC AUC Score: 0.6665
+Model for Pearl
+Accuracy: 0.7359
+Precision: 0.4756
+Recall: 0.9435
+F1 Score: 0.6324
+ROC AUC Score: 0.8473
+Model for Split
+Accuracy: 0.5961
+Precision: 0.4728
+Recall: 0.5795
+F1 Score: 0.5207
+ROC AUC Score: 0.6317
+Model for Sunset
+Accuracy: 0.7087
+Precision: 0.3723
+Recall: 0.9451
+F1 Score: 0.5342
+ROC AUC Score: 0.8635
+
+Average Scores:
+Average Accuracy: 0.6513
+Average Precision: 0.4443
+Average Recall: 0.8356
+Average F1 Score: 0.5589
+Average ROC AUC Score: 0.7692
+Model accuracy: 0.4851
+Model weighted accuracy: 0.8560
