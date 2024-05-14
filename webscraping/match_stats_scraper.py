@@ -102,8 +102,8 @@ def parse_econ_stats(econ, map_id):
 
 def parse_performance_stats(perf, map_id):
     performance_stats = perf.find("div", {"class": "vm-stats-container"}).find("div", {"data-game-id": map_id}).find("div", {"style": "overflow-x: auto; padding-bottom: 500px; margin-bottom: -500px;"}).find("table").find_all("tr")
-    t1_ps = performance_stats[1:5]
-    t2_ps = performance_stats[6:10]
+    t1_ps = performance_stats[1:6]
+    t2_ps = performance_stats[6:11]
     
     # find t1 performance stats
     t1_mks = 0

@@ -10,9 +10,10 @@ from map_data_parsing import get_map_pool, get_maps, get_agents
 # Load data
 maps_df = pd.read_csv("data/maps.csv")
 series_df = pd.read_csv("data/series.csv", index_col=False)
-# teams = pd.read_csv("data/teams.csv", header=None)[0].to_list()
+teams = pd.read_csv('data/teams.csv').iloc[:,0].tolist()
 vetos_df = pd.read_csv("data/vetos.csv")
-# tvd = pd.read_csv("data/tvd_inp.csv")
+tier1_series = pd.read_csv('data/tier1/tier1_series.csv', index_col=False)
+tier1_teams = pd.read_csv('data/tier1/tier1_teams.csv').iloc[:,0].tolist()
 
 # Map, Agents data
 out_of_pool = get_map_pool("data/game_data/map_pool.txt")
@@ -25,13 +26,8 @@ def concat_df(df1, df2):
     return (df2.copy() if df1.empty else pd.concat([df1, df2], ignore_index=True, sort=False))
 
 def get_tier1_series(series_df):
-    tier1_teams = []
-    with open("data/tier1_teams.csv", "r") as file:
-        for line in file:
-            tier1_teams.append(int(line.strip().split(",")[0]))
-    series_df = series_df[(series_df["t1"].isin(tier1_teams))]
-    series_df = series_df[(series_df["t2"].isin(tier1_teams))]
-    series_df.to_csv("data/tier1_series_encoded.csv", index=False)
+    series_df = series_df.loc[(series_df["t1"].isin(tier1_teams) | series_df["t2"].isin(tier1_teams))]
+    series_df.to_csv("data/tier1/tier1_series.csv", index=False)
 
 def get_map_pool(date, index):
     maps = [1,]*10
@@ -79,7 +75,7 @@ def get_team_wr_by_all_maps(maps_df, team, date, count, format):
         return map_winrates
     else:
         return pd.DataFrame([map_winrates], columns=team_map_winrate_headers)
-    
+
 # Get winrate of all teams on all maps, before a date over a count of maps
 def get_all_team_wr_by_maps(maps_df, date, count):
 
@@ -277,8 +273,23 @@ def get_tier1_tvd(tvd):
     tvd = tvd[tvd['team'].isin(tier1)]
     return tvd
 
-# for i in [0, 5, 10, 20]:
-#     tvd = transform_series_data(series_df, i)
-#     tvd = concatenate_tvd_inp(tvd)
-#     tvd = get_tier1_tvd(tvd)
-#     tvd.to_csv(f'data/tier1_tvd{i}.csv', index=False)
+def get_team_wr_by_all_maps_row(row):
+
+    # Iterate over maps and get winrates
+    map_winrates = []
+    for map in maps_id:
+        map_winrates.append(get_team_wr_by_map(maps_df, row[1], map, row[15], 0) - get_team_wr_by_map(maps_df, row[2], map, row[15], 0))
+
+    row[17:27] = map_winrates
+    return row
+
+def get_winrate_diff_df(series_df):
+    series_df['winner'] = False
+    series_df.loc[series_df['t1_mapwins'] > series_df['t2_mapwins'], 'winner'] = True
+    new_cols = [f'{i}_wr_diff' for i in range(10)]
+    series_df[new_cols] = 0
+    series_df = series_df.apply(get_team_wr_by_all_maps_row, axis=1, raw=True)
+    series_df = series_df[['match_id', 't1', 't2', 'winner', 'date'] + new_cols]
+    return series_df
+
+get_winrate_diff_df(tier1_series).to_csv('data/tier1/tier1_series_wr_diff.csv', index=False)

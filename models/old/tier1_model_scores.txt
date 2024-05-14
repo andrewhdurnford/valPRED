@@ -1,6 +1,0 @@
-Model weighted accuracy (count: 0): 0.4524, Correct Maps: 1325, Incorrect Maps: 2666
-Model weighted accuracy (count: 3): 0.4437, Correct Maps: 1325, Incorrect Maps: 2692
-Model weighted accuracy (count: 5): 0.4428, Correct Maps: 1325, Incorrect Maps: 2693
-Model weighted accuracy (count: 10): 0.4435, Correct Maps: 1325, Incorrect Maps: 2690
-Model weighted accuracy (count: 20): 0.4434, Correct Maps: 1325, Incorrect Maps: 2686
-Model weighted accuracy (count: 100): 0.4433, Correct Maps: 1325, Incorrect Maps: 2680

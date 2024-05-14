@@ -1,6 +1,5 @@
 import pandas as pd, ast, operator, numpy as np, os, math
 from IPython.display import display
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
@@ -36,7 +35,7 @@ def train_map_selection_model(map, pb, count=0):
     vdf = vdf.loc[vdf['action'] == pb]
     display(vdf.head(20))
 
-    features = [f"{map}_in_pool" for map in maps_set] + [f"{map}_t1_pickrate", f"{map}_t1_banrate", f"{map}_t1_playrate", f"{map}_t1_winrate",
+    features = [f"{map}_t1_pickrate", f"{map}_t1_banrate", f"{map}_t1_playrate", f"{map}_t1_winrate",
                 f"{map}_t2_pickrate", f"{map}_t2_banrate", f"{map}_t2_playrate", f"{map}_t2_winrate"]
     
     X = vdf[features]

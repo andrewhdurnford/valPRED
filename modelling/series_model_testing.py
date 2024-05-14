@@ -252,8 +252,6 @@ def predict_map_selection(team1, team2, binary, count, date):
         simulate_tree(1, 0, map_pool, 0, root)
         print(calculate_T_play_likelihoods(root))
 
-print("prdicting...")
-
 def predict(t1,t2, date):
     v1 = predict_map_selection(t1 , t2, True, 0, date)
     v2 = predict_map_selection(t2, t1, True, 0, date)
