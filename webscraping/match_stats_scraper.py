@@ -7,7 +7,7 @@ team_dict = {}
 maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset']
 agents = ["Astra", "Breach", "Brimstone", "Chamber", "Clove", "Cypher", "Deadlock", "Fade", "Gekko", "Harbor", "Iso", 
           "Jett", "Kayo", "Killjoy", "Neon", "Omen", "Phoenix", "Raze", "Reyna", "Sage", "Skye", "Sova", "Viper", "Yoru"]
-series_headers = ["match_id", "t1", "t2", "t1_ban1", "t1_ban2","t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "t1_mapwins", "t2_mapwins", "net_h2h", "t1_past", "t2_past", "date"]
+series_headers = ["match_id", "t1", "t2", "t1_ban1", "t1_ban2","t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "winner", "t1_mapwins", "t2_mapwins", "net_h2h", "t1_past", "t2_past", "best_odds", "worst_odds", "date"]
 map_headers = [
     "map_id", "t1", "t2", "winner", "map", 
     "t1_agent1", "t1_agent2", "t1_agent3", "t1_agent4", "t1_agent5",
@@ -336,13 +336,26 @@ def process_match_link(link):
             h2h = parse_h2h(soup.find("div", {"class": "match-h2h-matches"}))
             t1_past = parse_history(soup.find_all("div", {"class": "match-histories"})[0]) if len(soup.find_all("div", {"class": "match-histories"})) > 0 else None
             t2_past = parse_history(soup.find_all("div", {"class": "match-histories"})[1]) if len(soup.find_all("div", {"class": "match-histories"})) > 0 else None
-
+            winner = score[0] > score[1]
+            odds = soup.find_all("span", {"class": "match-bet-item-odds"})
+            best_odds =  0
+            worst_odds = 1
+            if odds is not None:
+                for odd in odds:
+                    val = float(odd.text[1:])
+                    val = 1/(val/100) if val > 0 else 0
+                    if not winner:
+                        val = 1 - val
+                    if val > best_odds and val != 1:
+                        best_odds = val
+                    if val < worst_odds and val != 0:
+                        worst_odds = val
             vetos = []
             match_df = pd.DataFrame()  # Define empty DataFrame
             if soup.find("div", {"class": "match-header-note"}):
                 vetos = parse_vetos(t1, t2, soup.find("div", {"class": "match-header-note"}).text)
                 if vetos != "no vetos":
-                    vetos_data = [match_id] + list(vetos) + [score[0], score[1], h2h, t1_past, t2_past, date]
+                    vetos_data = [match_id] + list(vetos) + [winner, score[0], score[1], h2h, t1_past, t2_past, best_odds, worst_odds, date]
                     match_df = pd.DataFrame([vetos_data], columns=series_headers)
 
             map_stats_list = []
@@ -366,60 +379,6 @@ def fetch_data(url):
 
 def process_all_matches():
     global series_df, maps_df
-    # async with aiohttp.ClientSession() as session:
-    #     for link in match_links:
-    #         tasks = []
-    #         url = f"{site}{link}"
-    #         tasks.append(fetch_data(session, url))
-    #         tasks.append(fetch_data(session, f"{url}/?game=all&tab=performance"))
-    #         tasks.append(fetch_data(session, f"{url}/?game=all&tab=economy"))
-    #         results = await asyncio.gather(*tasks)  # Wait for all three tasks to complete
-
-    #         match_soup = BeautifulSoup(results[0], "html.parser")
-    #         performance_soup = BeautifulSoup(results[1], "html.parser")
-    #         economy_soup = BeautifulSoup(results[2], "html.parser")
-
-    #         if not match_soup:
-    #             continue
-    #         match_id = re.search(r"/(\d+)/", link).group(1)
-    #         date = match_soup.find("div", {"class": "moment-tz-convert"}).get("data-utc-ts").split()[0]
-    #         t1 = get_team(match_soup.find("a", {"class": "match-header-link wf-link-hover mod-1"}).get("href"))
-    #         t2 = get_team(match_soup.find("a", {"class": "match-header-link wf-link-hover mod-2"}).get("href"))
-    #         score = match_soup.find("div", {"class": "match-header-vs-score"}).find("div", {"class": "js-spoiler"}).text.split(":")
-    #         score = [s.strip() for s in score]
-    #         h2h = parse_h2h(match_soup.find("div", {"class": "match-h2h-matches"}))
-    #         t1_past = parse_history(match_soup.find_all("div", {"class": "match-histories"})[0]) if len(match_soup.find_all("div", {"class": "match-histories"})) > 0 else None
-    #         t2_past = parse_history(match_soup.find_all("div", {"class": "match-histories"})[1]) if len(match_soup.find_all("div", {"class": "match-histories"})) > 0 else None
-
-    #         vetos = []
-    #         match_df = pd.DataFrame()
-    #         if match_soup.find("div", {"class": "match-header-note"}):
-    #             vetos = parse_vetos(t1, t2, match_soup.find("div", {"class": "match-header-note"}).text)
-    #             if vetos != "no vetos":
-    #                 vetos_data = [match_id] + vetos + [score[0], score[1], h2h, t1_past, t2_past, date]
-    #                 print(vetos_data)
-    #                 match_df = pd.DataFrame([vetos_data], columns=series_headers)
-    #             else:
-    #                 print(match_id)
-            
-    #         map_stats_list = []
-    #         for map in match_soup.find("div", {"class": "vm-stats-container"}).find_all("div", {"class": "vm-stats-game"}):
-    #             if isinstance(map, Tag):  # Check if the child is a Tag
-    #                 map_stats = parse_map(map, performance_soup, economy_soup, t1, t2)
-    #                 if map_stats is not None:
-    #                     map_stats.append(date)
-    #                     map_stats_list.append(map_stats)
-    #         map_stats_df = pd.DataFrame(map_stats_list, columns=map_headers)
-    #         if match_df is not None and not match_df.empty:   
-    #             if series_df.empty:
-    #                 series_df = match_df
-    #             elif not series_df.empty:
-    #                 series_df = pd.concat([series_df, match_df], ignore_index=True, sort=False)
-    #         if map_stats_df is not None and not map_stats_df.empty:
-    #             if maps_df.empty:
-    #                 maps_df = map_stats_df
-    #             elif not maps_df.empty:
-    #                 maps_df = pd.concat([maps_df, map_stats_df], ignore_index=True, sort=False)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(process_match_link, link) for link in match_links]

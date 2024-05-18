@@ -1,16 +1,12 @@
 import pandas as pd, math, ast, json, operator
 from IPython.display import display
 from datetime import datetime
-from sklearn import preprocessing
+from dateutil.relativedelta import relativedelta
 
 # Load data
 maps_df = pd.read_csv("data/maps.csv")
 series_df = pd.read_csv("data/series.csv", index_col=False)
 teams = pd.read_csv('data/teams.csv').iloc[:,0].tolist()
-tier1_teams = pd.read_csv('data/tier1/tier1_teams.csv').iloc[:,0].tolist()
-tier1_maps = pd.read_csv('data/tier1/tier1_maps.csv')
-tier1_maps = tier1_maps.drop(columns=tier1_maps.columns[0], axis=1)
-agent_wrs = pd.read_csv('data/agent_wrs.csv', index_col=False)
 
 # Map, Agents data
 def save_map_pool(out_of_pool):
@@ -52,6 +48,16 @@ def get_agents(file):
             agents.append(line.strip("\n"))
     return agents
 
+def get_date_before(date_str):
+    # Convert the string to a datetime object
+    date = datetime.strptime(date_str, "%Y-%m-%d")
+    
+    # Subtract three months from the date
+    date_three_months_before = date - relativedelta(months=3)
+    
+    # Convert the datetime object back to a string in the same format
+    return date_three_months_before.strftime("%Y-%m-%d")
+
 # Load game data
 out_of_pool = get_map_pool("data/game_data/map_pool.txt")
 maps = get_maps("data/game_data/maps.txt")
@@ -59,12 +65,20 @@ maps_id = list(range(len(maps)))
 agents = get_agents("data/game_data/agents.txt")
 agents_id = list(range(len(agents)))
 
-# Get winrate of an agent on a specific map
-def get_agent_wr_by_map(maps_df, agent, map):  
+# Get winrate of an agent on a specific map within the last 3 months
+def get_agent_wr_by_map(maps_df, agent, map, date):  
     # Filter row by map and agent
     maps_df = maps_df.loc[maps_df["map"] == map]
     t1_games = maps_df.loc[((maps_df['t1_agent1'] == agent) | (maps_df['t1_agent2'] == agent) | (maps_df['t1_agent3'] == agent) | (maps_df['t1_agent4'] == agent) | (maps_df['t1_agent5'] == agent))]
     t2_games = maps_df.loc[((maps_df['t2_agent1'] == agent) | (maps_df['t2_agent2'] == agent) | (maps_df['t2_agent3'] == agent) | (maps_df['t2_agent4'] == agent) | (maps_df['t2_agent5'] == agent))]
+
+    if len(t1_games.index) == 0 and len(t2_games.index) == 0:
+        return 0
+    
+    before = get_date_before(date)
+
+    if len(maps_df.loc[((maps_df['date'] < date) & (maps_df['date'] > before))].index) != 0:
+        maps_df = maps_df.loc[(maps_df['date'] < date)]
 
     # Count wins and total games
     wins = len(t1_games.loc[(t1_games['winner'] == t1_games['t1'])].index) + len(t2_games.loc[(t2_games['winner'] == t2_games['t1'])].index)
@@ -109,29 +123,33 @@ def get_all_agent_wr(maps_df):
     agent_wr_df = pd.DataFrame(data=agent_wrs, columns=agent_map_winrate_headers)
     agent_wr_df.to_csv('data/agent_wrs_nomap.csv', index=False)
 
-
 def get_agent_wr_from_df(agent, map, agent_wrs):
     wr = agent_wrs.iloc[[int(agent)]][map].sum()
     return wr
 
 def get_comp_wrs_from_row(row):
-    map = maps[int(row[4])]
-    row[67] = (get_agent_wr_from_df(row[5], map, agent_wrs) 
-                         + get_agent_wr_from_df(row[6], map, agent_wrs) 
-                         + get_agent_wr_from_df(row[7], map, agent_wrs)
-                         + get_agent_wr_from_df(row[8], map, agent_wrs)
-                         + get_agent_wr_from_df(row[9], map, agent_wrs))/5
-    row[68] = (get_agent_wr_from_df(row[10], map, agent_wrs) 
-                         + get_agent_wr_from_df(row[11], map, agent_wrs) 
-                         + get_agent_wr_from_df(row[12], map, agent_wrs)
-                         + get_agent_wr_from_df(row[13], map, agent_wrs)
-                         + get_agent_wr_from_df(row[14], map, agent_wrs))/5
+    row[67] = (get_agent_wr_by_map(maps_df, row[5], row[4], row[66]) 
+                         + get_agent_wr_by_map(maps_df, row[6], row[4], row[66]) 
+                         + get_agent_wr_by_map(maps_df, row[7], row[4], row[66])
+                         + get_agent_wr_by_map(maps_df, row[8], row[4], row[66])
+                         + get_agent_wr_by_map(maps_df, row[9], row[4], row[66]))/5
+    row[68] = (get_agent_wr_by_map(maps_df, row[10], row[4], row[66]) 
+                         + get_agent_wr_by_map(maps_df, row[11], row[4], row[66]) 
+                         + get_agent_wr_by_map(maps_df, row[12], row[4], row[66])
+                         + get_agent_wr_by_map(maps_df, row[13], row[4], row[66])
+                         + get_agent_wr_by_map(maps_df, row[14], row[4], row[66]))/5
     return row
 
-def rename_team_cols(maps_df, team):
+def get_comp_wrs_df(maps_df):
+    maps_df['t1_comp_wr'] = pd.Series(dtype='float')
+    maps_df['t2_comp_wr'] = pd.Series(dtype='float')
+    maps_df = maps_df.apply(get_comp_wrs_from_row, raw=True, axis=1)
+    return maps_df
+
+def rename_team_cols(df, team):
     # Separate columns
-    t1 = maps_df.loc[(maps_df['t1'] == team)]
-    t2 = maps_df.loc[(maps_df['t2'] == team)]
+    t1 = df.loc[(df['t1'] == team)]
+    t2 = df.loc[(df['t2'] == team)]
 
     # List of columns that begin with 't1' or 't2'
     t1_columns = [col for col in t2.columns if col.startswith('t1')]
@@ -143,38 +161,30 @@ def rename_team_cols(maps_df, team):
 
     # Rename the columns according to the mapping
     t2_renamed = t2.rename(columns=column_map)  
-    maps_df = pd.concat([t1, t2_renamed])
+    df = pd.concat([t1, t2_renamed])
 
-    return maps_df
+    return df
 
-def get_comp_wrs_df(maps_df):
-    maps_df['t1_comp_wr'] = pd.Series(dtype='float')
-    maps_df['t2_comp_wr'] = pd.Series(dtype='float')
-    maps_df = maps_df.apply(get_comp_wrs_from_row, raw=True, axis=1)
-    return maps_df
-
-def get_team_map_stats(team, map, maps_df=maps_df, date=datetime.today().strftime('%Y-%m-%d'), count=0):
-    # Filter by team and map
+def get_team_map_stats(team, map, maps_df, date=datetime.today().strftime('%Y-%m-%d'), count=5):
+    # Filter by team
     maps_df = maps_df.loc[((maps_df['t1'] == team) | (maps_df['t2'] == team))]
 
     # Check if team has played before date
     if len(maps_df.loc[(maps_df['date'] < date)].index) != 0:
         maps_df = maps_df.loc[(maps_df['date'] < date)]
     
-    # Check map flag and if team has played map
-    if map is not None and len(maps_df.loc[(maps_df['map'] == map)].index) != 0:
-        maps_df = maps_df.loc[((maps_df['map'] == map) & (maps_df['date'] < date))]
+    # Check if team has played map
+    if len(maps_df.loc[(maps_df['map'] == map)].index) != 0:
+        maps_df = maps_df.loc[(maps_df['map'] == map)]
 
     # Check count flag and if team has played enough games
     maps_df = maps_df.sort_values(by='date', ascending=False)
     if count > 0 and len(maps_df.index) > count:
-        maps_df = maps_df.head(10)
+        maps_df = maps_df.head(count)
     
     maps_df = rename_team_cols(maps_df, team)
     maps_df = maps_df.fillna(0)
-    maps_df = get_comp_wrs_df(maps_df)
 
-    comp_wr = maps_df['t1_comp_wr'].sum() / len(maps_df.index)
     round_wr = maps_df['t1_rds'].sum() / (maps_df['t2_rds'].sum() + maps_df['t1_rds'].sum())
     retake_wr = maps_df['t1_retakes_won'].sum() / (maps_df['t1_retakes_lost'].sum() + maps_df['t1_retakes_won'].sum()) if (maps_df['t1_retakes_lost'].sum() + maps_df['t1_retakes_won'].sum()) > 0 else 0
     postplant_wr = maps_df['t1_postplants_won'].sum() / (maps_df['t1_postplants_won'].sum() + maps_df['t1_postplants_lost'].sum()) if (maps_df['t1_postplants_won'].sum() + maps_df['t1_postplants_lost'].sum()) > 0 else 0
@@ -195,76 +205,57 @@ def get_team_map_stats(team, map, maps_df=maps_df, date=datetime.today().strftim
     clutches = maps_df['t1_clutches'].sum() / (maps_df['t1_clutches'].sum() + maps_df['t2_clutches'].sum()) if (maps_df['t1_clutches'].sum() + maps_df['t2_clutches'].sum()) > 0 else 0
     econ = maps_df['t1_econ'].sum() / len(maps_df.index)
     
-    return [comp_wr, round_wr, retake_wr, postplant_wr, fk_percent, pistol_wr, eco_wr, antieco_wr, fullbuy_wr, acs, kills, assists, deaths, kdr, kadr, kast, rating, mks, clutches, econ]
+    return [round_wr, retake_wr, postplant_wr, fk_percent, pistol_wr, eco_wr, antieco_wr, fullbuy_wr, acs, kills, assists, deaths, kdr, kadr, kast, rating, mks, clutches, econ]
 
-def get_team_map_stats_df(maps_df, maps, series_df=None, count=0):
-    if series_df is None:
-        new_columns = ['map_id', 't1', 't2', 'winner', 'map', 'date', 
-                    'comp_wr_diff', 'round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 
-                    'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 
-                    'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'clutch_diff', 'econ_diff']
-        maps_df_copy = maps_df
-        stats_diff_list = []
+def get_team_map_stats_df(maps_df, count=5):
+    
+    def get_map_stats_row(row, count=5):
+        t1_stats = get_team_map_stats(row[1], row[4], maps_df, row[66], count)
+        t2_stats = get_team_map_stats(row[2], row[4], maps_df, row[66], count)
+        stats_diff = [row[0], row[1], row[2], row[66], row[4], row[3]]
+        stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
+        stats_diff_list.append(stats_diff)
 
-        for _, row in maps_df.iterrows():
-            row_map = row['map'] if maps else None
-            t1_stats = get_team_map_stats(row['t1'], row_map, maps_df_copy, row['date'])
-            t2_stats = get_team_map_stats(row['t2'], row_map, maps_df_copy, row['date'])
-            stats_diff = [row['map_id'], row['t1'], row['t2'], row['winner'], row['map'], row['date']]
-            stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
-            stats_diff_list.append(stats_diff)
+    columns = ['map_id', 't1', 't2', 'date', 'map', 'winner', 'round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 
+                'pistol_wr_diff', 'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 
+                'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
 
-        stats_diff_df = pd.DataFrame(data=stats_diff_list, columns=new_columns)
-    else:
-        columns = ['match_id', 't1', 't2', 'winner', 'date', 'net_h2h', 'past_diff', 'comp_wr_diff', 'round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 
-                   'pistol_wr_diff', 'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 
-                   'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
+    stats_diff_list = []
+    maps_df.apply(get_map_stats_row, raw=True, axis=1)
+    return pd.DataFrame(data=stats_diff_list, columns=columns)
 
-        stats_diff_list = []
-        for _, row in series_df.iterrows():
-            t1_stats = get_team_map_stats(row['t1'], None, maps_df, row['date'], count)
-            t2_stats = get_team_map_stats(row['t2'], None, maps_df, row['date'], count)
-            stats_diff = [row['match_id'], row['t1'], row['t2'], row['winner'], row['date'], row['net_h2h'], row['past_diff']]
-            stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
-            stats_diff_list.append(stats_diff)
-        stats_diff_df = pd.DataFrame(data=stats_diff_list, columns=columns)
-    return stats_diff_df
+def get_series_map_stats_df(vetos_df, count=5):
 
-def get_tier1_maps(maps_df):
-    maps_df = maps_df.loc[((maps_df['t1'].isin(tier1_teams)) | (maps_df['t2'].isin(tier1_teams)))]
-    return maps_df
+    def get_map_stats_row(row, count=5):
+        t1_stats = get_team_map_stats(row[1], row[4], maps_df, row[3], count)
+        t2_stats = get_team_map_stats(row[2], row[4], maps_df, row[3], count)
+        stats_diff = row[0:20].tolist()
+        stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
+        stats_diff_list.append(stats_diff)
 
-def normalized_map_tmd(maps_tmd, series=False):
-    numeric = ['comp_wr_diff', 'round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 
+    columns = ['match_id', 't1', 't2', 'date', 'map', 'winner', 'played', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds',
+               't1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%', 'h2h_played',
+               'round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 
+               'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
+
+    stats_diff_list = []
+    vetos_df.apply(get_map_stats_row, raw=True, axis=1)
+    return pd.DataFrame(data=stats_diff_list, columns=columns)
+
+def normalize_training_data(df, vetos=False):
+    numeric = ['round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 
                 'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 
-                'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'clutch_diff', 'econ_diff']
-    if series:
+                'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
+    if vetos:
         numeric.extend(['net_h2h', 'past_diff'])
     for col in numeric:
-        maps_tmd[col] = maps_tmd[col] / maps_tmd[col].abs().max() 
-    return maps_tmd
+        df[col] = df[col] / df[col].abs().max() 
+    return df
 
-def normalize_tier1_tmd(tier1, maps_df, maps, series_df=None, count=0):
-    prefix = ''
-    if tier1:
-        maps_df = maps_df.loc[((maps_df['t1'].isin(tier1_teams)) | (maps_df['t2'].isin(tier1_teams)))]
-        prefix = 'data/tier1/tier1_'
-    if maps:
-        tier1_tmd = get_team_map_stats_df(tier1_maps, True)
-        normalized_map_tmd(tier1_tmd).to_csv(f'{prefix}normalized_tmd.csv', index=False)
+def format_map_data(maps_df, vetos_df=None, count=5):
+    if vetos_df is not None:
+        tmd = get_series_map_stats_df(vetos_df, count)
+        normalize_training_data(tmd, True).to_csv('data/series_data_stats.csv', index=False)
     else:
-        series_df = series_df.loc[((series_df['t1'].isin(tier1_teams)) | (series_df['t2'].isin(tier1_teams)))].copy()
-        series_df['winner'] = False
-        series_df.loc[series_df['t1_mapwins'] > series_df['t2_mapwins'], 'winner'] = True
-        series_df = series_df.fillna(0)
-        series_df['past_diff'] = series_df['t1_past'] - series_df['t2_past']
-        series_df.drop(["t1_ban1", "t1_ban2","t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "t1_mapwins", "t2_mapwins", "t1_past", "t2_past"], axis=1, inplace=True)
-        series_df = series_df[['match_id', 't1', 't2', 'winner', 'date', 'net_h2h', 'past_diff']]
-
-        tier1_tmd = get_team_map_stats_df(maps_df, False, series_df, count)
-        if count > 0:
-            normalized_map_tmd(tier1_tmd, True).to_csv(f'{prefix}normalized_tmd_nomap_{count}.csv', index=False)
-        else:
-            normalized_map_tmd(tier1_tmd, True).to_csv(f'{prefix}normalized_tmd_nomap.csv', index=False)
-
-# normalize_tier1_tmd(False, maps_df, False, series_df, 0)
+        tmd = get_team_map_stats_df(maps_df, count)
+        normalize_training_data(tmd).to_csv('data/map_training_data.csv', index=False)

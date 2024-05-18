@@ -98,6 +98,7 @@ team_links = []
 match_links = []
 
 def scrape_all_games(start_date):
+    global team_links, match_links
     # Fetch team links using multithreading
     with ThreadPoolExecutor(max_workers=20) as executor:
         future_to_region = {executor.submit(fetch_team_links, url): url for url in region_urls}
@@ -122,7 +123,7 @@ def scrape_all_games(start_date):
 
     match_links = list(set(match_links))
 
-    with open("data/match_links.csv", "w", newline="") as file:
+    with open("webscraping/match_links.csv", "w", newline="") as file:
         writer = csv.writer(file)
         for link in match_links:
             writer.writerow([link])
@@ -153,9 +154,8 @@ def get_all_teamname_variations(teamfile):
         for t in teams:
             writer.writerow(t)
 
+scrape_all_games("2023/02/12")
 get_all_teamname_variations('data/teams.csv')
-
-# scrape_all_games("2023/02/12")
 
 # Fetch tier 1 team links
 # with open("data/tier1_teams.csv", "w", newline="") as file:

@@ -1,79 +1,99 @@
-import pandas as pd, ast, operator, numpy as np, os, math
+import pandas as pd
 from IPython.display import display
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, accuracy_score, roc_auc_score
+from sklearn.metrics import classification_report, accuracy_score
 from sklearn.model_selection import train_test_split
 from joblib import dump, load
-from functools import partial
-from series_data_parsing import get_team_data, get_map_pool
 
 # Load data
-maps_df = pd.read_csv("data/maps.csv")
-series_df = pd.read_csv("data/series.csv", index_col=False)
-# tier1_series_df = pd.read_csv("data/tier1_series.csv", index_col=False)
-# teams = pd.read_csv("data/teams.csv", header=None)[0].to_list()
+exploded_vetos = pd.read_csv("data/exploded_vetos.csv", index_col=False)
+map_pick_model = load('models/current/map_pick_model.joblib')
+series_winner_model = load('models/current/series_winner.joblib')
+maps_id = range(10)
+models = {}
+for m in maps_id:
+    models[m] = load(f'models/current/maps/{m}_model.joblib')
 
-# Map, Agents data
-maps = ["Ascent", "Bind", "Breeze", "Fracture", "Haven", "Icebox", "Lotus", "Pearl", "Split", "Sunset"]
-maps_id = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-out_of_pool = {"2023-01-10": [6, 8, 9], "2023-04-25": [1, 2, 9], "2023-08-24": [2, 5, 9], "06-09-23": [3, 5, 7, 9], "2024-01-09": [3, 5, 7], "2024-11-12": [3, 4, 7]}
-agents = ["Astra", "Breach", "Brimstone", "Chamber", "Clove", "Cypher", "Deadlock", "Fade", "Gekko", "Harbor", "Iso", 
-          "Jett", "Kayo", "Killjoy", "Neon", "Omen", "Phoenix", "Raze", "Reyna", "Sage", "Skye", "Sova", "Viper", "Yoru"]
-agents_id = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+def train_map_pick_model(vetos_df):
+    features = ['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%', 'h2h_played']
+    for col in features:
+        vetos_df[col] = vetos_df[col] / vetos_df[col].abs().max() 
 
-# Train model to predict if a team will pick or ban individual map
-def train_map_selection_model(map, pb, count=0):
-    # Load data
-    maps_set = set(maps_id.copy())
-    maps_set.remove(map)
-    vdf = pd.read_csv(f"data/tier1/tier1_tvd.csv")
-    vdf = vdf.loc[((vdf[f"{map}_in_pool"] == True))]
-    vdf['map'] = np.where(vdf['map'] == map, 1, 0)
-    vdf['action'] = np.where(vdf['action'] == "pick", 1, 0)
-    for i in range(10):
-        vdf[f'{i}_in_pool'] = np.where(vdf[f'{i}_in_pool'] == True, 1, 0)
-    vdf = vdf.loc[vdf['action'] == pb]
-    display(vdf.head(20))
-
-    features = [f"{map}_t1_pickrate", f"{map}_t1_banrate", f"{map}_t1_playrate", f"{map}_t1_winrate",
-                f"{map}_t2_pickrate", f"{map}_t2_banrate", f"{map}_t2_playrate", f"{map}_t2_winrate"]
-    
-    X = vdf[features]
-    Y = vdf["map"]
+    X = vetos_df[features]
+    Y = vetos_df['played']
 
     # Train model
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
     model = LogisticRegression()
     model.fit(X_train, Y_train)
     predictions = model.predict(X_test)
-
-    directory_path = f"models/current/{count}"
-    if not os.path.exists(directory_path):
-        os.makedirs(directory_path)
-    file_path = os.path.join(directory_path, f"{maps[map].lower()}_map_{pb}.joblib")
-    # dump(model, file_path)
-
-    # Evaluate model
     accuracy = accuracy_score(Y_test, predictions)
     report = classification_report(Y_test, predictions, output_dict=False)
-    # precision = report["weighted avg"]["precision"]
-    # f1_score = report["weighted avg"]["f1-score"]
-    # file_path = os.path.join(directory_path, f"model_metrics.txt")
-    print(report)
     print(accuracy)
-    # with open(file_path, 'a') as file:
-    #     file.write(f"{maps[map]}_map_{pb} overview\n")
-    #     file.write("Accuracy: {:.4f}\n".format(accuracy))
-    #     file.write("Precision: {:.4f}\n".format(precision))
-    #     file.write("F1 Score: {:.4f}\n".format(f1_score))
-    #     file.write("\n")
-    
-    # print(f"Metrics saved to {file_path}")
+    print(report)
+    dump(model, 'models/current/map_pick_model.joblib')
 
-def train_all_individual_map_selection_models(count):
-    for map in maps_id:
-        print(f"Training model")
-        train_map_selection_model(map, "pick", count)
-        train_map_selection_model(map, "ban", count)
+def get_mapwin_row(row):
+    model = models[row[4]]
+    map_features = ['round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 
+                'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 
+                'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
+    df = pd.DataFrame(data=[row[20:39]], columns=map_features)
+    map_pick_features = ['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%', 'h2h_played']
+    pick_df = pd.DataFrame(data=[row[11:20]], columns=map_pick_features)
+    row[39] = map_pick_model.predict_proba(pick_df)[0][0]
+    row[40] = model.predict_proba(df)[0][0] * row[39]
+    row[41] = model.predict_proba(df)[0][1] * row[39]
+    return row
 
-train_map_selection_model(0, True, 0)
+
+def transform_data_stats(sds):
+    sds = sds.fillna(0)
+
+    # Get map play chance, and each team's winrate
+    sds[['play%', 't1_winchance', 't2_winchance']] = 0
+    sds = sds.apply(get_mapwin_row, raw=True, axis=1)
+
+    # Compress matches
+    sds = sds[['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds', 't1_winchance', 't2_winchance']]
+    matches = sds['match_id'].unique()
+    cols = ['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds', 'winshare']
+    data = []
+    for match in matches:
+        df = sds.loc[sds['match_id'] == match]
+        match_data = df.iloc[0].tolist()[:9]
+        pred_win = df['t1_winchance'].sum() / (df['t1_winchance'].sum() + df['t2_winchance'].sum()) 
+        match_data.append(pred_win)
+        data.append(match_data)
+    sds = pd.DataFrame(data=data, columns=cols)
+    sds.to_csv('data/transformed_pred_data.csv')
+    return sds
+
+def train_pred_model(sds):
+    sds = transform_data_stats(sds)
+    features = ['net_h2h', 'past_diff', 'winshare']
+    X = sds[features]
+    Y = sds['winner']
+
+    # Train model
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+    model = LogisticRegression()
+    model.fit(X_train, Y_train)
+    predictions = model.predict(X_test)
+    accuracy = accuracy_score(Y_test, predictions)
+    report = classification_report(Y_test, predictions, output_dict=False)
+    dump(model, 'models/current/series_winner.joblib')
+    print(accuracy)
+    print(report)
+
+def series_win_row(row):
+    cols = ['net_h2h', 'past_diff', 'winshare']
+    df = pd.DataFrame(data=[[row[5], row[6], row[9]]], columns=cols)
+    row[10] = series_winner_model.predict_proba(df)[0][0]
+    return row
+
+def pred_sds(sds):
+    sds['pred_win%'] = 0
+    sds = sds.apply(series_win_row, raw=True, axis=1)
+    sds = sds[['match_id', 't1', 't2', 'date', 'winner', 'pred_win%', 'best_odds', 'worst_odds']]
+    return sds
