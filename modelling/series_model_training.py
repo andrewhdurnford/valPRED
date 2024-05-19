@@ -46,7 +46,6 @@ def get_mapwin_row(row):
     row[41] = model.predict_proba(df)[0][1] * row[39]
     return row
 
-
 def transform_data_stats(sds):
     sds = sds.fillna(0)
 
@@ -88,8 +87,8 @@ def train_pred_model(sds):
 
 def series_win_row(row):
     cols = ['net_h2h', 'past_diff', 'winshare']
-    df = pd.DataFrame(data=[[row[5], row[6], row[9]]], columns=cols)
-    row[10] = series_winner_model.predict_proba(df)[0][0]
+    df = pd.DataFrame(data=[[row[6], row[7], row[10]]], columns=cols)
+    row[11] = series_winner_model.predict_proba(df)[0][0]
     return row
 
 def pred_sds(sds):
