@@ -10,9 +10,6 @@ from map_data_parsing import get_map_pool, get_maps, get_agents, rename_team_col
 # Load data
 maps_df = pd.read_csv("data/maps.csv")
 series_df = pd.read_csv("data/series.csv", index_col=False)
-teams = pd.read_csv('data/teams.csv').iloc[:,0].tolist()
-# tier1_series = pd.read_csv('data/tier1/tier1_series.csv', index_col=False)
-# tier1_teams = pd.read_csv('data/tier1/tier1_teams.csv').iloc[:,0].tolist()
 
 # Map, Agents data
 out_of_pool = get_map_pool("data/game_data/map_pool.txt")
@@ -21,7 +18,7 @@ maps_id = list(range(len(maps)))
 agents = get_agents("data/game_data/agents.txt")
 agents_id = list(range(len(agents)))
 
-def get_map_pool(date, index):
+def get_map_in_pool(date, index):
     maps = [1,]*10
     for key, value in out_of_pool.items():
         if date >= key:
@@ -30,6 +27,17 @@ def get_map_pool(date, index):
             for value in value:
                 maps[value] = 0
         return maps[index]
+
+# Get tier1 version of a dataframe
+def get_tier1(df):
+    tier1 = pd.read_csv('data/tier1/teams.csv').iloc[:,0].tolist()
+    df = df.loc[(df['t1'].isin(tier1) | df['t2'].isin(tier1))]
+    return df.copy(deep=True)
+
+def between_dates(df, sd, ed):
+    return_df = df.copy(deep=True)
+    return_df = return_df.loc[((return_df['date'] > sd) & (return_df['date'] < ed))]
+    return return_df.copy(deep=True)
 
 # Get winrate of a team on a specific map, before a date over a count of maps
 def get_team_wr_by_map(maps_df, team, map, date, count):
@@ -69,72 +77,71 @@ def get_team_wr_by_all_maps(maps_df, team, date, count, format):
         return pd.DataFrame([map_winrates], columns=team_map_winrate_headers)
 
 # Get winrate of all teams on all maps, before a date over a count of maps
-def get_all_team_wr_by_maps(maps_df, date, count):
+# def get_all_team_wr_by_maps(maps_df, date, count):
 
-    # Set column headers and initialize DataFrame
-    team_map_winrate_headers = ["team"]
-    team_map_winrate_headers.extend(maps_id)
+#     # Set column headers and initialize DataFrame
+#     team_map_winrate_headers = ["team"]
+#     team_map_winrate_headers.extend(maps_id)
 
-    # Iterate over teams and get winrates
-    map_winrates_data = []
-    for team in teams:
-        map_winrates = get_team_wr_by_all_maps(maps_df, team, date, count, format="list")
-        map_winrates_data.append(map_winrates)
-    team_map_winrate_df = pd.DataFrame(columns=team_map_winrate_headers, data=map_winrates_data)
-    return team_map_winrate_df
+#     # Iterate over teams and get winrates
+#     map_winrates_data = []
+#     for team in teams:
+#         map_winrates = get_team_wr_by_all_maps(maps_df, team, date, count, format="list")
+#         map_winrates_data.append(map_winrates)
+#     team_map_winrate_df = pd.DataFrame(columns=team_map_winrate_headers, data=map_winrates_data)
+#     return team_map_winrate_df
 
 # Add map pool on match date to series dataframe
 def add_map_pool_to_series(series_df):
     # Get map pool for each map
     for map in maps_id:
-        series_df[f'{map}_in_pool'] = series_df['date'].apply(lambda x: get_map_pool(x, map))
+        series_df[f'{map}_in_pool'] = series_df['date'].apply(lambda x: get_map_in_pool(x, map))
     return series_df
 
 # Explode vetos to a column
-def explode_vetos(series_df):
-    # Set instance variables, add map pool to df
-    series_df = add_map_pool_to_series(series_df)
-    series_df.info()
-    sdf_headers = list(series_df.columns)[0:91]
-    headers = list(series_df.columns)  + ["team", "action", "map"]
-    exploded_rows = []
+# def explode_vetos(series_df):
+#     # Set instance variables, add map pool to df
+#     series_df = add_map_pool_to_series(series_df)
+#     sdf_headers = list(series_df.columns)[0:91]
+#     headers = list(series_df.columns)  + ["team", "action", "map"]
+#     exploded_rows = []
 
-    # Iterate over rows
-    for _, row in series_df.iterrows():
-        map_pool = row.iloc[91:101].tolist()
-        # Iterate through pick/ban order
-        for i in [0, 2, 4, 5, 1, 3, 6]:
-            exploded_data = row.iloc[0:91].tolist() + map_pool
+#     # Iterate over rows
+#     for _, row in series_df.iterrows():
+#         map_pool = row.iloc[91:101].tolist()
+#         # Iterate through pick/ban order
+#         for i in [0, 2, 4, 5, 1, 3, 6]:
+#             exploded_data = row.iloc[0:91].tolist() + map_pool
 
-            # Get team
-            if i == 6:
-                team = 0
-            else:
-                team = int(row[sdf_headers[i + 3][:2]])
-            exploded_data.append(team)
+#             # Get team
+#             if i == 6:
+#                 team = 0
+#             else:
+#                 team = int(row[sdf_headers[i + 3][:2]])
+#             exploded_data.append(team)
 
-            # Get action
-            if "ban" in sdf_headers[i + 3]:
-                exploded_data.append("ban")
-            elif "pick" in sdf_headers[i + 3]:
-                exploded_data.append("pick")
-            else:
-                exploded_data.append("remaining")
+#             # Get action
+#             if "ban" in sdf_headers[i + 3]:
+#                 exploded_data.append("ban")
+#             elif "pick" in sdf_headers[i + 3]:
+#                 exploded_data.append("pick")
+#             else:
+#                 exploded_data.append("remaining")
             
-            # Get map
-            exploded_data.append(row.iloc[i + 3])
+#             # Get map
+#             exploded_data.append(row.iloc[i + 3])
 
-            # Append to data
-            exploded_rows.append(exploded_data)
+#             # Append to data
+#             exploded_rows.append(exploded_data)
 
-            # Remove map from pool
-            map_pool[row.iloc[i + 3]] = 0
+#             # Remove map from pool
+#             map_pool[row.iloc[i + 3]] = 0
 
-    # Separate by picks & bans
-    exploded_df = pd.DataFrame(columns=headers, data=exploded_rows)
-    exploded_df = exploded_df.astype({"team": "int64"})
-    exploded_df.to_csv('data/vetos.csv', index=False)
-    return exploded_df
+#     # Separate by picks & bans
+#     exploded_df = pd.DataFrame(columns=headers, data=exploded_rows)
+#     exploded_df = exploded_df.astype({"team": "int64"})
+#     exploded_df.to_csv('data/vetos.csv', index=False)
+#     return exploded_df
 
 # Get pick, ban, and play rates of a team on a specific map, before a date over a count of series
 def get_team_pbrate_by_map(series_df, team, map, date, count):
@@ -190,8 +197,7 @@ def get_team_data_by_map_row(row, count=5):
     t1_pick, t1_ban, t1_play = get_team_pbrate_by_map(series_df, row[1], row[4], row[3], count)
     t2_win = get_team_wr_by_map(maps_df, row[2], row[4], row[3], count)
     t2_pick, t2_ban, t2_play = get_team_pbrate_by_map(series_df, row[2], row[4], row[3], count)
-    h2h_history = get_h2h_map_history(series_df, row[1], row[2], row[4], row[3])
-    row[11:20] = [t1_win, t1_pick, t1_ban, t1_play, t2_win, t2_pick, t2_ban, t2_play, h2h_history]
+    row[11:19] = [t1_win, t1_pick, t1_ban, t1_play, t2_win, t2_pick, t2_ban, t2_play]
     return row
 
 # Get pick, ban, play, and win rates of a team on all maps, before a date over a count of series
@@ -245,10 +251,11 @@ def map_played_status(row, map_id):
     return None
 
 def explode_map_choices(series_df):
-    series_df['net_h2h'] = series_df['net_h2h'].fillna(0)
+    sdf = series_df.copy()
+    sdf['net_h2h'] = sdf['net_h2h'].fillna(0)
     data = []
     for map in maps_id:
-        temp_df = series_df.apply(lambda row: pd.Series({
+        temp_df = sdf.apply(lambda row: pd.Series({
             'match_id': row['match_id'],
             't1': row['t1'],
             't2': row['t2'],
@@ -263,16 +270,52 @@ def explode_map_choices(series_df):
         }), axis=1)
         data.append(temp_df)
 
-    edf = pd.concat(data)
+    exploded_df = pd.concat(data)
     
     # Drop rows where map status is None (map not involved in the match at all)
-    edf = edf.dropna(subset=['played'])
-    edf.sort_values(by="match_id", ascending=True, inplace=True)
+    exploded_df = exploded_df.dropna(subset=['played'])
+    exploded_df.sort_values(by="match_id", ascending=True, inplace=True)
 
     # Get win, pick, ban, and playrates
-    edf[['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%', 'h2h_played']] = 0
-    edf = edf.apply(get_team_data_by_map_row, raw=True, axis=1)
-    edf.to_csv('data/exploded_vetos.csv', index=False)
-    return edf
+    exploded_df[['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%']] = 0
+    exploded_df = exploded_df.apply(get_team_data_by_map_row, raw=True, axis=1)
+    exploded_df = exploded_df.loc[~((exploded_df['t1_win%'] == 0) & (exploded_df['t1_pick%'] == 0) & (exploded_df['t1_ban%'] == 0) & (exploded_df['t1_play%'] == 0) 
+                    & (exploded_df['t2_win%'] == 0) & (exploded_df['t2_pick%'] == 0) & (exploded_df['t2_ban%'] == 0) & (exploded_df['t2_play%'] == 0))]
+    return exploded_df.copy(deep=True)
 
-explode_map_choices(series_df)
+def transform_series_stats(sds, models, map_pick_model):
+    # Fill Nan values
+    sds = sds.fillna(0)
+    
+    def get_mapwin_row(row):
+        map_features = ['round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 
+                    'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 
+                    'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
+        df = pd.DataFrame(data=[row[19:38]], columns=map_features)
+        map_pick_features = ['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%']
+        pick_df = pd.DataFrame(data=[row[11:19]], columns=map_pick_features)
+        row[38] = map_pick_model.predict_proba(pick_df)[0][0]
+
+        model = models[row[4]]
+        row[39] = model.predict_proba(df)[0][0] * row[38] if model is not None else None
+        row[40] = model.predict_proba(df)[0][1] * row[38] if model is not None else None
+        return row
+
+    # Get map play chance, and each team's winrate
+    sds[['play%', 't1_winchance', 't2_winchance']] = 0
+    sds = sds.apply(get_mapwin_row, raw=True, axis=1)
+    sds = sds.dropna()
+
+    # Compress matches
+    sds = sds[['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds', 't1_winchance', 't2_winchance']]
+    matches = sds['match_id'].unique()
+    cols = ['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds', 'winshare']
+    data = []
+    for match in matches:
+        df = sds.loc[sds['match_id'] == match]
+        match_data = df.iloc[0].tolist()[:9]
+        pred_win = df['t1_winchance'].sum() / (df['t1_winchance'].sum() + df['t2_winchance'].sum()) 
+        match_data.append(pred_win)
+        data.append(match_data)
+    sds = pd.DataFrame(data=data, columns=cols)
+    return sds.copy(deep=True)

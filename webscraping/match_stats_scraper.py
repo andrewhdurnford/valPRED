@@ -35,6 +35,8 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 # Load match links
 with open("webscraping/match_links.csv", "r") as f:
     match_links = f.read().splitlines()
+with open("webscraping/tier1_match_links.csv", "r") as f:
+    tier1_match_links = f.read().splitlines()
 
 def get_team(href):
     id_match = int(re.search(r"/team/(\d+)", href).group(1))
@@ -298,7 +300,7 @@ def parse_history(history):
         return net
 
 def process_match_link(link):
-    print(f"Processing match {match_links.index(link)} out of {len(match_links)} ({round(match_links.index(link)/len(match_links)* 100, 2) }%)")
+    print(f"Processing match {tier1_match_links.index(link)} out of {len(tier1_match_links)} ({round(tier1_match_links.index(link)/len(tier1_match_links)* 100, 2) }%)")
     match_id = re.search(r"/(\d+)/", link).group(1)
     match_link = site + link
     try:
@@ -377,11 +379,11 @@ def fetch_data(url):
     response = requests.get(url)
     return BeautifulSoup(response.text, "html.parser")
 
-def process_all_matches():
+def process_all_matches(links):
     global series_df, maps_df
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(process_match_link, link) for link in match_links]
+        futures = [executor.submit(process_match_link, link) for link in links]
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
             if result is not None:
@@ -392,14 +394,14 @@ def process_all_matches():
                     maps_df = (map_stats_df.copy() if maps_df.empty else pd.concat([maps_df, map_stats_df], ignore_index=True, sort=False))
 
     # Save processed data
-    series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/series.csv', index=False)
-    maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/maps.csv', index=False)
-    with open('data/teams.csv', 'w') as csv_file:  
-        writer = csv.writer(csv_file)
-        for key, value in team_dict.items():
-            writer.writerow([key, value])
+    series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/tier1/all_series.csv', index=False)
+    maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/tier1/all_maps.csv', index=False)
+    # with open('data/teams.csv', 'w') as csv_file:  
+    #     writer = csv.writer(csv_file)
+    #     for key, value in team_dict.items():
+    #         writer.writerow([key, value])
 
 def main():
-    process_all_matches()
+    process_all_matches(tier1_match_links)
 
 main()

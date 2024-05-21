@@ -75,33 +75,44 @@ def fetch_team_links(url):
     return team_links
 
 def fetch_match_links(team_url_suffix, start_date):
+    def fetch_links(team_url_suffix, start_date, page):
+        match_links = []
+        full_url = site + "/team/matches" + team_url_suffix + f"/?page={page}"
+        soup = fetch_data(full_url)
+        if soup:
+            matchlist = soup.find("div", {"class": "col mod-1"}).find("div", {"class": "mod-dark"})
+            if matchlist:
+                for div in matchlist.children:
+                    if isinstance(div, Tag):
+                        a_tag = div.find("a")
+                        if a_tag:
+                            date_text = a_tag.find("div", {"class": "m-item-date"}).find("div").text.strip()
+                            date = datetime.strptime(date_text, "%Y/%m/%d")
+                            start = datetime.strptime(start_date, "%Y/%m/%d")
+                            if date < start:
+                                break
+                            link = a_tag.get("href")
+                            match_links.append(link)
+        return match_links
+
     match_links = []
     full_url = site + "/team/matches" + team_url_suffix
     soup = fetch_data(full_url)
-    if soup:
-        matchlist = soup.find("div", {"class": "col mod-1"}).find("div", {"class": "mod-dark"})
-        if matchlist:
-            for div in matchlist.children:
-                if isinstance(div, Tag):
-                    a_tag = div.find("a")
-                    if a_tag:
-                        date_text = a_tag.find("div", {"class": "m-item-date"}).find("div").text.strip()
-                        date = datetime.strptime(date_text, "%Y/%m/%d")
-                        start = datetime.strptime(start_date, "%Y/%m/%d")
-                        if date < start:
-                            break
-                        link = a_tag.get("href")
-                        match_links.append(link)
+    pages = len(soup.find("div", {"class": "action-container-pages"}).contents)
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [executor.submit(fetch_links, team_url_suffix, start_date, i + 1) for i in range(pages)]
+        for future in as_completed(futures):
+            match_links.extend(future.result())
     return match_links
 
 team_links = []
 match_links = []
 
-def scrape_all_games(start_date):
+def scrape_all_games(start_date, teams):
     global team_links, match_links
     # Fetch team links using multithreading
     with ThreadPoolExecutor(max_workers=20) as executor:
-        future_to_region = {executor.submit(fetch_team_links, url): url for url in region_urls}
+        future_to_region = {executor.submit(fetch_team_links, url): url for url in teams}
         for future in as_completed(future_to_region):
             region = future_to_region[future]
             try:
@@ -128,16 +139,15 @@ def scrape_all_games(start_date):
         for link in match_links:
             writer.writerow([link])
 
-def fetch_all_teamnames(line):
-    team = line.strip('\n').split(',')
-    soup = fetch_data(f"https://www.vlr.gg/team/{team[0]}")
-    names = soup.select('[class*="wf-title"]') 
-    for n in names:
-        team.append(n.text)
-    return team
-
-
 def get_all_teamname_variations(teamfile):
+    def fetch_all_teamnames(line):
+        team = line.strip('\n').split(',')
+        soup = fetch_data(f"https://www.vlr.gg/team/{team[0]}")
+        names = soup.select('[class*="wf-title"]') 
+        for n in names:
+            team.append(n.text)
+        return team
+    
     teams = []
     with ThreadPoolExecutor(max_workers=20) as executor:
         with open(teamfile, 'r') as f:
@@ -149,16 +159,16 @@ def get_all_teamname_variations(teamfile):
                 except Exception as exc:
                     print(f'{team} generated an exception: {exc}')
                     traceback.print_exc()
+
     with open(teamfile, 'w') as csv_file:  
         writer = csv.writer(csv_file)
         for t in teams:
             writer.writerow(t)
 
-scrape_all_games("2023/02/12")
-get_all_teamname_variations('data/teams.csv')
+scrape_all_games("2021/01/01", tier1_urls)
 
 # Fetch tier 1 team links
-# with open("data/tier1_teams.csv", "w", newline="") as file:
+# with open("data/tier1/teams.csv", "w", newline="") as file:
 #     writer = csv.writer(file)
 #     for link in team_links:
 #         team_id = link.split('/')[1]
