@@ -1,34 +1,45 @@
-id, linkname, fullname, abbrev, secondary_id
-8185,drx,DRX
-878,rex-regum-qeon,Rex Regum Qeon,RRQ
-6199,team-secret,Team Secret,TS
+id,linkname,fullname,abbrev,secondary_id
+7386,mibr,MIBR
+2359,leviat-n,Leviatán,LEV
+2406,furia,FURIA,FUR
+2355,kr-esports,KRÜ Esports,KRÜ
+120,100-thieves,100 Thieves,100T
 11058,g2-esports,G2 Esports,G2
 6961,loud,LOUD,LOUD
-7386,mibr,MIBR
 188,cloud9,Cloud9,C9
-918,global-esports,Global Esports,GE
-278,detonation-focusme,DetonatioN FocusMe,DFM
-624,paper-rex,Paper Rex,PRX
-8304,talon-esports,Talon Esports,TLN
 2,sentinels,Sentinels,SEN
-2406,furia,FURIA,FUR
 5248,evil-geniuses,Evil Geniuses,EG
-2355,kr-esports,KRÜ Esports,KRÜ
-2359,leviat-n,Leviatán,LEV
-120,100-thieves,100 Thieves,100T
 1034,nrg-esports,NRG Esports,NRG
-14,t1,T1
-5448,zeta-division,ZETA DIVISION,ZETA
-17,gen-g,Gen.G,GEN
-6387,bleed,BLEED,BLD
-2593,fnatic,FNATIC,FNC
 14419,giantx,GIANTX,GX
-474,team-liquid,Team Liquid,TL
-2059,team-vitality,Team Vitality,VIT
-8877,karmine-corp,Karmine Corp,KC
-397,bbl-esports,BBL Esports,BBL
+2593,fnatic,FNATIC,FNC
 1184,fut-esports,FUT Esports,FUT
-4915,natus-vincere,Natus Vincere,NAVI
 12694,gentle-mates,Gentle Mates,M8
 7035,koi,KOI
 1001,team-heretics,Team Heretics,TH
+4915,natus-vincere,Natus Vincere,NAVI
+8877,karmine-corp,Karmine Corp,KC
+397,bbl-esports,BBL Esports,BBL
+2059,team-vitality,Team Vitality,VIT
+474,team-liquid,Team Liquid,TL
+6387,bleed,BLEED,BLD
+918,global-esports,Global Esports,GE
+8304,talon-esports,Talon Esports,TLN
+8185,drx,DRX
+878,rex-regum-qeon,Rex Regum Qeon,RRQ
+5448,zeta-division,ZETA DIVISION,ZETA
+6199,team-secret,Team Secret,TS
+624,paper-rex,Paper Rex,PRX
+17,gen-g,Gen.G,GEN
+278,detonation-focusme,DetonatioN FocusMe,DFM
+14,t1,T1
+1119,all-gamers,All Gamers,AG
+1120,edward-gaming,EDward Gaming,EDG
+12064,nova-esports,Nova Esports,NOVA
+14137,titan-esports-club,Titan Esports Club,TEC
+11981,dragon-ranger-gaming,Dragon Ranger Gaming,DRG
+12010,bilibili-gaming,Bilibili Gaming,BLG
+11328,funplus-phoenix,FunPlus Phoenix,FPX
+12685,trace-esports,Trace Esports,TE
+731,tyloo,TYLOO,TYL
+13576,jd-gaming,JD Gaming,JDG
+13790,wolves-esports,Wolves Esports,WOL
