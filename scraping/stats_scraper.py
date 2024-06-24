@@ -42,6 +42,13 @@ new_tier1_match_links = None
 # with open("webscraping/new_tier1_match_links.csv", "r") as f:
 #     new_tier1_match_links = f.read().splitlines()
 
+def isnum(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
 def get_team(href):
     id_match = int(re.search(r"/team/(\d+)", href).group(1))
     name_match = re.search(r"/team/\d+/([^/]+)$", href).group(1)
@@ -97,6 +104,9 @@ def parse_econ(input_string):
     return int(matches[0]), int(matches[1])
 
 def parse_econ_stats(econ, map_id):
+    if 'Stats from this map are not available yet' in econ.find("div", {"class": "vm-stats-game mod-active"}).text:
+        return [pd.NA, ] * 10
+
     econ_stats = econ.find("div", {"class": "vm-stats-container"}).find("div", {"data-game-id": map_id}).find("div", {"style": "overflow-x: auto;"}).find("table").find_all("tr")
     t1_pistols = int(econ_stats[1].find_all("td")[1].find("div", {"class": "stats-sq"}).text)
     t1_ecos_won, t1_ecos_lost = parse_econ(econ_stats[1].find_all("td")[2].find("div", {"class": "stats-sq"}).text)
@@ -107,6 +117,8 @@ def parse_econ_stats(econ, map_id):
     return [t1_pistols, t2_pistols, t1_ecos_won, t1_ecos_lost, t2_ecos_won, t2_ecos_lost, t1_fullbuys_won, t1_fullbuys_lost, t2_fullbuys_won, t2_fullbuys_lost]
 
 def parse_performance_stats(perf, map_id):
+    if 'Stats from this map are not available yet' in perf.find("div", {"class": "vm-stats-game mod-active"}).text:
+        return [pd.NA, ] * 10
     performance_stats = perf.find("div", {"class": "vm-stats-container"}).find("div", {"data-game-id": map_id}).find("div", {"style": "overflow-x: auto; padding-bottom: 500px; margin-bottom: -500px;"}).find("table").find_all("tr")
     t1_ps = performance_stats[1:6]
     t2_ps = performance_stats[6:11]
@@ -177,29 +189,36 @@ def parse_player_stats(player_data):
     assists = 0
     kast = 0
     played_agents = []
+    nan = False
+
     for player in player_data.find_all("tr"):
         played_agents.append(player.find("td", {"class": "mod-agents"}).find("img").get("title"))
         stats = player.find_all("td", {"class": "mod-stat"})
-        atk_rating += float(stats[0].find("span", {"class": "side mod-side mod-t"}).text)
-        def_rating += float(stats[0].find("span", {"class": "side mod-side mod-ct"}).text)
+        atk_rating += float(stats[0].find("span", {"class": "side mod-side mod-t"}).text) if isnum(stats[0].find("span", {"class": "side mod-side mod-t"}).text) else 0
+        def_rating += float(stats[0].find("span", {"class": "side mod-side mod-ct"}).text) if isnum(stats[0].find("span", {"class": "side mod-side mod-ct"}).text) else 0
         acs = int(stats[1].find("span", {"class": "side mod-side mod-both"}).text)
         kills += int(stats[2].find("span", {"class": "side mod-side mod-both"}).text)
         deaths += int(stats[3].find("span", {"class": "side mod-both"}).text)
         assists += int(stats[4].find("span", {"class": "side mod-both"}).text)
-        kast += int(stats[6].find("span", {"class": "side mod-both"}).text.strip("%"))
+        kast += int(stats[6].find("span", {"class": "side mod-both"}).text.strip("%")) if isnum(stats[6].find("span", {"class": "side mod-both"}).text) else 0
         avg_acs += acs
         if acs > max_acs:
             max_acs = acs
         if acs < min_acs:
             min_acs = acs
         fbs = player.find("td", {"class": "mod-stat mod-fb"})
-        atk_fks += int(fbs.find("span", {"class": "mod-t"}).text)
-        def_fks += int(fbs.find("span", {"class": "mod-ct"}).text)
+        if not isnum(fbs.find("span", {"class": "mod-t"}).text) or not isnum(fbs.find("span", {"class": "mod-ct"}).text):
+            nan = True
+        atk_fks += int(fbs.find("span", {"class": "mod-t"}).text) if isnum(fbs.find("span", {"class": "mod-t"}).text) else 0
+        def_fks += int(fbs.find("span", {"class": "mod-ct"}).text) if isnum(fbs.find("span", {"class": "mod-ct"}).text) else 0
+    if nan:
+        atk_fks, def_fks = pd.NA, pd.NA
+
     played_agents.sort()
     avg_acs = avg_acs / 5
-    atk_rating = atk_rating / 5
-    def_rating = def_rating / 5
-    kast = kast / 500
+    atk_rating = atk_rating / 5 if not atk_rating == 0 else pd.NA
+    def_rating = def_rating / 5 if not def_rating == 0 else pd.NA
+    kast = kast / 500 if not kast == 0 else pd.NA
     played_agents = [agents.index(agent) for agent in played_agents]
     return [played_agents, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast]
 
@@ -438,4 +457,6 @@ def update_tier1():
     series_df = pd.read_csv('data/tier1/series.csv', index_col=False)
     maps_df = pd.read_csv('data/tier1/maps.csv', index_col=False)
     process_all_matches(new_tier1_match_links, True)
-    sanitize_tier1()
+    # sanitize_tier1()
+
+process_tier1()

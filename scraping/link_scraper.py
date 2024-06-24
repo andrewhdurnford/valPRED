@@ -251,7 +251,7 @@ def get_all_tier1_teams():
 
 def get_all_matchlinks():
     links = scrape_all_games('2021/03/30', all_events)
-    with open("webscraping/match_links.csv", "w", newline="") as file:
+    with open("scraping/match_links.csv", "w", newline="") as file:
         writer = csv.writer(file)
         for link in links:
             writer.writerow([link])
@@ -261,14 +261,14 @@ def update_all_matchlinks():
     date = (datetime.strptime(series['date'].max(), "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
     links = scrape_all_games(date, all_events)
 
-    with open("webscraping/new_match_links.csv", "w", newline="") as file:
+    with open("scraping/new_match_links.csv", "w", newline="") as file:
         writer = csv.writer(file)
         for link in links:
             writer.writerow([link])
 
 def get_tier1_matchlinks():
     links = scrape_all_games('2021/03/30', tier1_events)
-    with open("webscraping/tier1_match_links.csv", "w", newline="") as file:
+    with open("scraping/tier1_match_links.csv", "w", newline="") as file:
         writer = csv.writer(file)
         for link in links:
             writer.writerow([link])
@@ -278,7 +278,7 @@ def update_tier1_matchlinks():
     date = (datetime.strptime(series['date'].max(), "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
     links = scrape_all_games(date, tier1_events)
 
-    with open("webscraping/new_tier1_match_links.csv", "w", newline="") as file:
+    with open("scraping/new_tier1_match_links.csv", "w", newline="") as file:
         writer = csv.writer(file)
         for link in links:
             writer.writerow([link])

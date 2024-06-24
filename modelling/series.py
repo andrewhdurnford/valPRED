@@ -328,10 +328,8 @@ def transform_series_stats(sds, models, map_pick_model):
     sds = sds.fillna(0)
     
     def get_mapwin_row(row):
-        map_features = ['round_wr_diff', 'retake_wr_diff', 'postplant_wr_diff', 'fk_percent_diff', 'pistol_wr_diff', 
-                    'eco_wr_diff', 'antieco_wr_diff', 'fullbuy_wr_diff', 'acs_diff', 'kills_diff', 
-                    'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff', 'kast_diff', 'rating_diff', 'mks_diff', 'clutch_diff', 'econ_diff']
-        df = pd.DataFrame(data=[row[19:38]], columns=map_features)
+        map_features = ['round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff']
+        df = pd.DataFrame(data=[[row[19], row[22], row[27], row[28], row[29], row[30], row[31], row[32]]], columns=map_features)
         map_pick_features = ['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%']
         # pickdata = [row[11], row[12], row[13], row[15], row[16], row[17], ((row[14] + row[18]) / 2)]
         pick_df = pd.DataFrame(data=[row[11:19]], columns=map_pick_features)

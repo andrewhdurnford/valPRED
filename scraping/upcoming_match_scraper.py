@@ -41,9 +41,9 @@ def get_match_data(url):
     
     return [match_id, t1, t2, date, h2h, t1_past, t2_past, t1_best, t2_best]
 
-def get_matches(days):
+def get_matches(link, days):
     # Get list of match urls
-    soup = fetch_data(f'{site}/matches')
+    soup = fetch_data(link)
     schedules = soup.find_all('div', {'class': re.compile(r'^wf-card')})
     matches = []
     for i in range(1, days + 1):
@@ -64,8 +64,22 @@ def get_matches(days):
             except Exception as exc:
                 print(f'An error occurred for match {match}: {exc}')
     cols = ['match_id', 't1', 't2', 'date', 'net_h2h', 't1_past', 't2_past', 't1_odds', 't2_odds']
-    df = pd.DataFrame(data=match_data, columns=cols)
-    df.to_csv('data/raw/upcoming.csv', index=False)
-    return df.copy(deep=True)
+    # df = pd.DataFrame(data=match_data, columns=cols)
+    # df.to_csv('data/raw/upcoming.csv', index=False)
+    return match_data
 
-get_matches(7)
+def get_all_matches(days):
+    regions = [
+        'https://www.vlr.gg/event/matches/2005/champions-tour-2024-pacific-stage-2/?group=upcoming',
+        'https://www.vlr.gg/event/matches/2094/champions-tour-2024-emea-stage-2/?group=upcoming',
+        'https://www.vlr.gg/event/matches/2095/champions-tour-2024-americas-stage-2/?group=upcoming'
+    ]
+    cols = ['match_id', 't1', 't2', 'date', 'net_h2h', 't1_past', 't2_past', 't1_odds', 't2_odds']
+    data = []
+
+    for region in regions:
+        data.extend(get_matches(region, days))
+    df = pd.DataFrame(data=data, columns=cols)
+    df.to_csv('data/raw/upcoming.csv', index=False)
+
+get_all_matches(3)
