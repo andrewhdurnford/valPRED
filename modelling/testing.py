@@ -61,7 +61,7 @@ def simulate_bets(predictions, bankroll):
     dog = round(dog / bets * 100, 2)
     print("Bets placed: " + str(bets) + " Ending bankroll: $" + str(round(bankroll, 2)) + " Accuracy: " + str(accuracy) + "%" + " EV: " + str(expected_value) + " Dog: " + str(dog) +"%")
     df = pd.DataFrame(data=data, columns=cols)
-    return df, bets, bankroll, accuracy
+    return df
 
 def test_series_winner_model(sp):
     df = sp.copy(deep=True)

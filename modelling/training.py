@@ -49,7 +49,7 @@ def train_map_pick_model(vetos):
         n_iter=5000,  # Number of parameter settings that are sampled
         scoring='accuracy',
         cv=5,
-        verbose=0,
+        verbose=1,
         random_state=42,
         n_jobs=-1  # Use all available cores
     )
@@ -59,7 +59,7 @@ def train_map_pick_model(vetos):
         param_grid=param_grid,
         scoring='accuracy',
         cv=5,
-        verbose=0,
+        verbose=1,
         n_jobs=-1  # Use all available cores
     )
 
@@ -127,7 +127,7 @@ def train_map_model(tmd, map):
     y_pred = best_gbm_model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     report = classification_report(y_test, y_pred)
-    # print(f'Accuracy of {maps[map]} model: {accuracy:.2f}')
+    print(f'Accuracy of map model: {accuracy:.2f}')
     print(report)
     return best_gbm_model
 

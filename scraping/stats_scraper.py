@@ -15,7 +15,7 @@ map_headers = [
     "t1_retakes_won", "t1_retakes_lost", "t2_retakes_won", "t2_retakes_lost",
     "t1_postplants_won", "t1_postplants_lost", "t2_postplants_won", "t2_postplants_lost",
     "overtime", "t1_overtime_rds", "t2_overtime_rds",
-    "t1_atk_fks", "t1_def_fks", "t2_atk_fks", "t2_def_fks", 
+    "t1_fks", "t1_atk_fks", "t1_def_fks", "t2_fks", "t2_atk_fks", "t2_def_fks", 
     "t1_pistols", "t2_pistols",  
     "t1_ecos_won", "t1_ecos_lost", "t2_ecos_won", "t2_ecos_lost", 
     "t1_fullbuys_won", "t1_fullbuys_lost", "t2_fullbuys_won", "t2_fullbuys_lost",
@@ -27,7 +27,6 @@ map_headers = [
     "date"
 ]
 site = "https://www.vlr.gg"
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Load match links
 with open("scraping/match_links.csv", "r") as f:
@@ -37,10 +36,10 @@ with open("scraping/tier1_match_links.csv", "r") as f:
 
 new_match_links = None
 new_tier1_match_links = None
-# with open("webscraping/new_match_links.csv", "r") as f:
+# with open("scraping/new_match_links.csv", "r") as f:
 #     new_match_links = f.read().splitlines()
-# with open("webscraping/new_tier1_match_links.csv", "r") as f:
-#     new_tier1_match_links = f.read().splitlines()
+with open("scraping/new_tier1_match_links.csv", "r") as f:
+    new_tier1_match_links = f.read().splitlines()
 
 def isnum(s):
     try:
@@ -177,6 +176,7 @@ def parse_performance_stats(perf, map_id):
     return [t1_mks, t1_clutches, t1_econ, t2_mks, t2_clutches, t2_econ, t1_plants, t1_defuses, t2_plants, t2_defuses]
 
 def parse_player_stats(player_data):
+    fks = 0
     atk_fks = 0
     def_fks = 0
     max_acs = 0
@@ -206,11 +206,13 @@ def parse_player_stats(player_data):
             max_acs = acs
         if acs < min_acs:
             min_acs = acs
-        fbs = player.find("td", {"class": "mod-stat mod-fb"})
-        if not isnum(fbs.find("span", {"class": "mod-t"}).text) or not isnum(fbs.find("span", {"class": "mod-ct"}).text):
+        fk_tds = player.find("td", {"class": "mod-stat mod-fb"})
+
+        fks += int(fk_tds.find("span", {"class": "side mod-both"}).text) if fk_tds.find("span", {"class": "side mod-both"}) else 0
+        if not fk_tds.find("span", {"class": "side mod-t"}) or fk_tds.find("span", {"class": "side mod-ct"}):
             nan = True
-        atk_fks += int(fbs.find("span", {"class": "mod-t"}).text) if isnum(fbs.find("span", {"class": "mod-t"}).text) else 0
-        def_fks += int(fbs.find("span", {"class": "mod-ct"}).text) if isnum(fbs.find("span", {"class": "mod-ct"}).text) else 0
+        atk_fks += int(fk_tds.find("span", {"class": "side mod-t"}).text) if fk_tds.find("span", {"class": "side mod-t"}) and isnum(fk_tds.find("span", {"class": "side mod-t"}).text) else 0
+        def_fks += int(fk_tds.find("span", {"class": "side mod-ct"}).text) if fk_tds.find("span", {"class": "side mod-ct"}) and isnum(fk_tds.find("span", {"class": "side mod-ct"}).text) else 0
     if nan:
         atk_fks, def_fks = pd.NA, pd.NA
 
@@ -220,7 +222,7 @@ def parse_player_stats(player_data):
     def_rating = def_rating / 5 if not def_rating == 0 else pd.NA
     kast = kast / 500 if not kast == 0 else pd.NA
     played_agents = [agents.index(agent) for agent in played_agents]
-    return [played_agents, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast]
+    return [played_agents, fks, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast]
 
 def parse_map(econ, perf, map, t1, t2):
     try:
@@ -264,7 +266,7 @@ def parse_map(econ, perf, map, t1, t2):
                 t2_overtime_rds = None
             
             player_stats = map.find_all("table", {"class": "wf-table-inset mod-overview"})
-            t1_stats = parse_player_stats(player_stats[0].find("tbody")) # agents, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast
+            t1_stats = parse_player_stats(player_stats[0].find("tbody")) # agents, fks, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast
             t2_stats = parse_player_stats(player_stats[1].find("tbody"))
             econ_stats = parse_econ_stats(econ, map_id) # t1_pistols, t2_pistols, t1_ecos_won, t1_ecos_lost, t2_ecos_won, t2_ecos_lost, t1_fullbuys_won, t1_fullbuys_lost, t2_fullbuys_won, t2_fullbuys_lost
             performance_stats = parse_performance_stats(perf, map_id) # t1_mks, t1_clutches, t1_econ, t2_mks, t2_clutches, t2_econ,6 t1_plants,7 t1_defuses,8 t2_plants,9 t2_defuses
@@ -276,14 +278,14 @@ def parse_map(econ, perf, map, t1, t2):
                         performance_stats[7], (performance_stats[8] - performance_stats[7]), performance_stats[9], (performance_stats[6] - performance_stats[9]), 
                         (performance_stats[6] - performance_stats[9]), performance_stats[9], (performance_stats[8]-performance_stats[7]), performance_stats[7], 
                         overtime, t1_overtime_rds, t2_overtime_rds,
-                        t1_stats[1], t1_stats[2], t2_stats[1], t2_stats[2],
+                        t1_stats[1], t1_stats[2], t1_stats[3], t2_stats[1], t2_stats[2], t2_stats[3],
                         econ_stats[0], econ_stats[1], 
                         econ_stats[2], econ_stats[3], econ_stats[4], econ_stats[5], 
                         econ_stats[6], econ_stats[7], econ_stats[8], econ_stats[9],
-                        t1_stats[3], t1_stats[4], t2_stats[3], t2_stats[4],
-                        t1_stats[5], t2_stats[5],
-                        t1_stats[6], t1_stats[7], t1_stats[8], t1_stats[9],
-                        t2_stats[6], t2_stats[7], t2_stats[8], t2_stats[9],
+                        t1_stats[4], t1_stats[5], t2_stats[4], t2_stats[5],
+                        t1_stats[6], t2_stats[6],
+                        t1_stats[7], t1_stats[8], t1_stats[9], t1_stats[10],
+                        t2_stats[7], t2_stats[8], t2_stats[9], t2_stats[10],
                         performance_stats[0], performance_stats[1], performance_stats[2], 
                         performance_stats[3], performance_stats[4], performance_stats[5]
                     ]
@@ -425,14 +427,14 @@ def process_all_matches(links, tier1):
         maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/maps.csv', index=False)
 
 # Remove cn matches (limited data)
-def sanitize_tier1():
-    cn = pd.read_csv('data/tier1/teams/cn.csv').iloc[:,0].tolist()
-    maps = pd.read_csv('data/raw/tier1_maps.csv', index_col=False)
-    maps = maps.loc[~(maps['t1'].isin(cn) | maps['t2'].isin(cn))]
-    maps.to_csv('data/tier1/maps.csv', index=False)
-    series = pd.read_csv('data/raw/tier1_series.csv', index_col=False)
-    series = series.loc[~(series['t1'].isin(cn) | series['t2'].isin(cn))]
-    series.to_csv('data/tier1/series.csv', index=False)
+# def sanitize_tier1():
+#     cn = pd.read_csv('data/tier1/teams/cn.csv').iloc[:,0].tolist()
+#     maps = pd.read_csv('data/raw/tier1_maps.csv', index_col=False)
+#     maps = maps.loc[~(maps['t1'].isin(cn) | maps['t2'].isin(cn))]
+#     maps.to_csv('data/tier1/maps.csv', index=False)
+#     series = pd.read_csv('data/raw/tier1_series.csv', index_col=False)
+#     series = series.loc[~(series['t1'].isin(cn) | series['t2'].isin(cn))]
+#     series.to_csv('data/tier1/series.csv', index=False)
 
 def process_all():
     global series_df, maps_df
@@ -457,6 +459,5 @@ def update_tier1():
     series_df = pd.read_csv('data/tier1/series.csv', index_col=False)
     maps_df = pd.read_csv('data/tier1/maps.csv', index_col=False)
     process_all_matches(new_tier1_match_links, True)
-    # sanitize_tier1()
 
 process_tier1()

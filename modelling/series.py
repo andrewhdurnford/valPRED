@@ -74,7 +74,7 @@ def get_regional(df):
     return return_df.copy(deep=True)
 
 def remove_cn(df):
-    cn = pd.read_csv("data/tier1/teams/cn.csv")
+    cn = pd.read_csv("data/tier1/teams/cn.csv").iloc[:,0].tolist()
     return_df = df.copy(deep=True)
     return_df = return_df.loc[~(return_df['t1'].isin(cn) | return_df['t2'].isin(cn))]
     return return_df.copy(deep=True)

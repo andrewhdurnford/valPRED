@@ -27,47 +27,39 @@ def init():
 
 # Train based on timeframe
 def train(tsd, ted, ed, vetos, mapdata):
-    vetos = pd.read_csv('data/tier1/processed/vetos.csv', index_col=False) 
-    mapdata = pd.read_csv('data/tier1/processed/mapdata_nd.csv', index_col=False)
+    vetos = between_dates(pd.read_csv('data/tier1/processed/vetos.csv', index_col=False), '2020-01-01', ed)
+    mapdata = between_dates(pd.read_csv('data/tier1/processed/mapdata_nd.csv', index_col=False), '2020-01-01', ed)
     models = {}
 
-    # map_pick_model = train_map_pick_model(between_dates(vetos, tsd, ted))
-    # user_input = input("Press Enter to save 'map_pick_model', or type anything else to skip: ")
-    # if user_input == "":
-    #     dump(map_pick_model, 'models/map_pick.joblib')
+    map_pick_model = train_map_pick_model(between_dates(vetos, tsd, ted))
+    model = train_map_model(between_dates(mapdata, tsd, ted), -1)
 
-    # model = train_map_model(between_dates(mapdata, tsd, ted), -1)
-    # user_input = input("Press Enter to save 'model', or type anything else to skip: ")
-    # if user_input == "":
-    #     dump(model, 'models/map_win.joblib')
-
-    # for i in range(10):
-    #     if get_map_in_pool(ted, i):
-    #         models[i] = train_map_model(between_dates(mapdata, tsd, ted), i)
-    #     else:
-    #         models[i] = None
-
-    map_pick_model = load('models/map_pick.joblib')
-    model = load('models/map_win.joblib')
-
-    # for i in range(10):
-    #     models[i] = load(f'models/maps/{i}.joblib')
+    # map_pick_model = load('models/map_pick.joblib')
+    # model = load('models/map_win.joblib')
 
     transformed_series_data = transform_series_stats_nd(format_veto_data_nd(vetos, maps), model, map_pick_model)
+
     tsd_bd = between_dates(transformed_series_data, tsd, ted)
-    tsd_ad = get_regional(between_dates(transformed_series_data, ted, ed))
-
     series_winner_model = train_series_winner_model(tsd_bd)
+    
+    tsd_ad = get_regional(remove_cn(between_dates(transformed_series_data, ted, ed)))
     series_predictions = predict_series_outcomes(tsd_ad, series_winner_model)
+    df = simulate_bets(series_predictions, 1000)
+    # test_series_winner_model(series_predictions)
 
-    # for i in range(10):
-    #     dump(models[i], f'models/maps/{i}.joblib')
-    # dump(series_winner_model, 'models/series_winner.joblib')
 
-    df, bets, bankroll, accuracy = simulate_bets(series_predictions, 1000)
-    test_series_winner_model(series_predictions)
-    df.to_csv('data/tier1/results/results.csv', index=False)
-    return df, bets, bankroll, accuracy
 
-init()
-train(vct_2023_start, vct_2024_start, '2024-09-01', None, None)
+    user_input = input("Press Enter to save 'model', or type anything else to skip: ")
+    if user_input == "":
+        dump(map_pick_model, 'models/map_pick_model.joblib')
+        dump(model, 'models/map_win.joblib')
+        dump(series_winner_model, 'models/series_winner.joblib')
+
+# def test():
+#     tsd_ad = get_regional(remove_cn(between_dates(tsd, ted, ed)))
+#     series_predictions = predict_series_outcomes(tsd_ad, series_winner_model)
+#     df = simulate_bets(series_predictions, 1000)
+#     test_series_winner_model(series_predictions)
+#     df.to_csv('data/tier1/results/results.csv', index=False)
+
+train(vct_2023_start, vct_2024_start, '2024-05-23', None, None)

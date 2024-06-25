@@ -22,8 +22,8 @@ def get_team_map_stats(team, map, maps_df, date=datetime.today().strftime('%Y-%m
     
     maps_df = rename_team_cols(maps_df, team)
     maps_df = maps_df.fillna(0)
-    if len(maps_df.index) == 0:
-        return [0,] * 19
+    if len(maps_df.index) == 0 or (maps_df['t1_atk_fks'].sum() + maps_df['t1_def_fks'].sum() + maps_df['t2_atk_fks'].sum() + maps_df['t2_def_fks'].sum()) == 0:
+        return [0,] * 8
     
     round_wr = maps_df['t1_rds'].sum() / (maps_df['t2_rds'].sum() + maps_df['t1_rds'].sum())
     fk_percent = (maps_df['t1_atk_fks'].sum() + maps_df['t1_def_fks'].sum()) / (maps_df['t1_atk_fks'].sum() + maps_df['t1_def_fks'].sum() + maps_df['t2_atk_fks'].sum() + maps_df['t2_def_fks'].sum()) 
@@ -38,17 +38,17 @@ def get_team_map_stats(team, map, maps_df, date=datetime.today().strftime('%Y-%m
 
 def get_team_map_stats_df(maps_df):
     def get_map_stats_row(row, count=5):
-        t1_stats = get_team_map_stats(row[1], row[4], maps_df, row[19], count)
-        t2_stats = get_team_map_stats(row[2], row[4], maps_df, row[19], count)
-        stats_diff = row[0:5].tolist()
-        stats_diff.append(row[19])
+        t1_stats = get_team_map_stats(row['t1'], row['map'], maps_df, row['date'], count) # team, map, maps_df, date=datetime.today().strftime('%Y-%m-%d'), count
+        t2_stats = get_team_map_stats(row['t2'], row['map'], maps_df, row['date'], count)
+        stats_diff = row.to_list()[0:5].tolist()
+        stats_diff.append(row['date'])
         stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
         stats_diff_list.append(stats_diff)
         return row
 
     stats_diff_list = []
     columns = ['map_id', 't1', 't2', 'winner', 'map', 'date', 'round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff']
-    maps_df.apply(get_map_stats_row, raw=True, axis=1)
+    maps_df.apply(get_map_stats_row, axis=1)
     df = pd.DataFrame(data=stats_diff_list, columns=columns)
     return df.copy(deep=True)
 
