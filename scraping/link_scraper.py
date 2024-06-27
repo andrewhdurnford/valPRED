@@ -257,7 +257,7 @@ def get_all_matchlinks():
             writer.writerow([link])
 
 def update_all_matchlinks():
-    series = pd.read_csv('data/series.csv', index_col=False)
+    series = pd.read_csv('data/raw/series.csv', index_col=False)
     date = (datetime.strptime(series['date'].max(), "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
     links = scrape_all_games(date, all_events)
 
@@ -274,7 +274,7 @@ def get_tier1_matchlinks():
             writer.writerow([link])
 
 def update_tier1_matchlinks():
-    series = pd.read_csv('data/tier1/series.csv', index_col=False)
+    series = pd.read_csv('data/raw/tier1_series.csv', index_col=False)
     date = (datetime.strptime(series['date'].max(), "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
     links = scrape_all_games(date, tier1_events)
 

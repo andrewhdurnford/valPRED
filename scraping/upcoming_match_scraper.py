@@ -5,7 +5,7 @@ from stats_scraper import parse_h2h, parse_history
 
 
 site = 'https://www.vlr.gg'
-teams = pd.read_csv('data/all/teams.csv', index_col=False)
+# teams = pd.read_csv('data/all/teams.csv', index_col=False)
 
 def get_match_data(url):
     link = site + url
@@ -82,4 +82,4 @@ def get_all_matches(days):
     df = pd.DataFrame(data=data, columns=cols)
     df.to_csv('data/raw/upcoming.csv', index=False)
 
-get_all_matches(3)
+get_all_matches(7)

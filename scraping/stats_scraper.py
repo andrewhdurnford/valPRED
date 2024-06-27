@@ -3,43 +3,31 @@ from bs4 import BeautifulSoup, Tag
 from IPython.display import display
 
 team_dict = {}
-maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset']
+maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset', 'Abyss']
 agents = ["Astra", "Breach", "Brimstone", "Chamber", "Clove", "Cypher", "Deadlock", "Fade", "Gekko", "Harbor", "Iso", 
           "Jett", "Kayo", "Killjoy", "Neon", "Omen", "Phoenix", "Raze", "Reyna", "Sage", "Skye", "Sova", "Viper", "Yoru"]
-series_headers = ["match_id", "t1", "t2", "t1_ban1", "t1_ban2","t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "winner", "t1_mapwins", "t2_mapwins", "net_h2h", "t1_past", "t2_past", "best_odds", "worst_odds", "date"]
-map_headers = [
-    "map_id", "t1", "t2", "winner", "map", 
-    "t1_agent1", "t1_agent2", "t1_agent3", "t1_agent4", "t1_agent5",
-    "t2_agent1", "t2_agent2", "t2_agent3", "t2_agent4", "t2_agent5", 
-    "t1_rds", "t1_atk_rds", "t1_def_rds", "t2_rds","t2_atk_rds", "t2_def_rds", 
-    "t1_retakes_won", "t1_retakes_lost", "t2_retakes_won", "t2_retakes_lost",
-    "t1_postplants_won", "t1_postplants_lost", "t2_postplants_won", "t2_postplants_lost",
-    "overtime", "t1_overtime_rds", "t2_overtime_rds",
-    "t1_fks", "t1_atk_fks", "t1_def_fks", "t2_fks", "t2_atk_fks", "t2_def_fks", 
-    "t1_pistols", "t2_pistols",  
-    "t1_ecos_won", "t1_ecos_lost", "t2_ecos_won", "t2_ecos_lost", 
-    "t1_fullbuys_won", "t1_fullbuys_lost", "t2_fullbuys_won", "t2_fullbuys_lost",
-    "t1_atk_rating", "t1_def_rating", "t2_atk_rating", "t2_def_rating",
-     "t1_avg_acs", "t2_avg_acs",
-    "t1_kills", "t1_assists", "t1_deaths", "t1_kast", 
-    "t2_kills", "t2_assists", "t2_deaths", "t2_kast",
-    "t1_mks", "t1_clutches", "t1_econ", "t2_mks", "t2_clutches", "t2_econ",
-    "date"
-]
+series_headers = ["match_id", "t1", "t2", "winner", "t1_ban1", "t1_ban2", "t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "t1_mapwins", "t2_mapwins", "net_h2h", "t1_past", "t2_past", "odds", "date"]
+
 site = "https://www.vlr.gg"
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 # Load match links
 with open("scraping/match_links.csv", "r") as f:
     match_links = f.read().splitlines()
+match_links = list(set(match_links))
+
 with open("scraping/tier1_match_links.csv", "r") as f:
     tier1_match_links = f.read().splitlines()
-
+tier1_match_links = list(set(tier1_match_links))
 new_match_links = None
-new_tier1_match_links = None
 # with open("scraping/new_match_links.csv", "r") as f:
 #     new_match_links = f.read().splitlines()
+
 with open("scraping/new_tier1_match_links.csv", "r") as f:
     new_tier1_match_links = f.read().splitlines()
+
+with open("scraping/sample_links.csv", "r") as f:
+    sample_links = f.read().splitlines()
 
 def isnum(s):
     try:
@@ -94,7 +82,7 @@ def parse_vetos(t1, t2, vetos):
     if len(t1_bans) != 2 or len(t2_bans) != 2 or len(t1_picks) != 1 or len(t2_picks) != 1 or remaining_map is None:
         return "no vetos"
 
-    return (t1, t2, maps.index(t1_bans[0]), maps.index(t1_bans[1]), maps.index(t2_bans[0]), maps.index(t2_bans[1]), maps.index(t1_picks[0]), maps.index(t2_picks[0]), maps.index(remaining_map))
+    return [maps.index(t1_bans[0]), maps.index(t1_bans[1]), maps.index(t2_bans[0]), maps.index(t2_bans[1]), maps.index(t1_picks[0]), maps.index(t2_picks[0]), maps.index(remaining_map)]
 
 def parse_econ(input_string):
     matches = input_string.strip("\n\t").split("(")
@@ -176,59 +164,38 @@ def parse_performance_stats(perf, map_id):
     return [t1_mks, t1_clutches, t1_econ, t2_mks, t2_clutches, t2_econ, t1_plants, t1_defuses, t2_plants, t2_defuses]
 
 def parse_player_stats(player_data):
+    
     fks = 0
-    atk_fks = 0
-    def_fks = 0
-    max_acs = 0
-    min_acs = 9999
-    avg_acs = 0
-    atk_rating = 0
-    def_rating = 0
+    acs = 0
+    rating = 0
     kills = 0
     deaths = 0
     assists = 0
     kast = 0
     played_agents = []
-    nan = False
 
     for player in player_data.find_all("tr"):
         played_agents.append(player.find("td", {"class": "mod-agents"}).find("img").get("title"))
         stats = player.find_all("td", {"class": "mod-stat"})
-        atk_rating += float(stats[0].find("span", {"class": "side mod-side mod-t"}).text) if isnum(stats[0].find("span", {"class": "side mod-side mod-t"}).text) else 0
-        def_rating += float(stats[0].find("span", {"class": "side mod-side mod-ct"}).text) if isnum(stats[0].find("span", {"class": "side mod-side mod-ct"}).text) else 0
-        acs = int(stats[1].find("span", {"class": "side mod-side mod-both"}).text)
+        rating += float(stats[0].find("span", {"class": "side mod-side mod-both"}).text) if isnum(stats[0].find("span", {"class": "side mod-side mod-both"}).text) else 0
         kills += int(stats[2].find("span", {"class": "side mod-side mod-both"}).text)
         deaths += int(stats[3].find("span", {"class": "side mod-both"}).text)
         assists += int(stats[4].find("span", {"class": "side mod-both"}).text)
-        kast += int(stats[6].find("span", {"class": "side mod-both"}).text.strip("%")) if isnum(stats[6].find("span", {"class": "side mod-both"}).text) else 0
-        avg_acs += acs
-        if acs > max_acs:
-            max_acs = acs
-        if acs < min_acs:
-            min_acs = acs
-        fk_tds = player.find("td", {"class": "mod-stat mod-fb"})
-
-        fks += int(fk_tds.find("span", {"class": "side mod-both"}).text) if fk_tds.find("span", {"class": "side mod-both"}) else 0
-        if not fk_tds.find("span", {"class": "side mod-t"}) or fk_tds.find("span", {"class": "side mod-ct"}):
-            nan = True
-        atk_fks += int(fk_tds.find("span", {"class": "side mod-t"}).text) if fk_tds.find("span", {"class": "side mod-t"}) and isnum(fk_tds.find("span", {"class": "side mod-t"}).text) else 0
-        def_fks += int(fk_tds.find("span", {"class": "side mod-ct"}).text) if fk_tds.find("span", {"class": "side mod-ct"}) and isnum(fk_tds.find("span", {"class": "side mod-ct"}).text) else 0
-    if nan:
-        atk_fks, def_fks = pd.NA, pd.NA
+        acs += int(stats[1].find("span", {"class": "side mod-side mod-both"}).text)
+        fks += int(player.find("td", {"class": "mod-stat mod-fb"}).find("span", {"class": "side mod-both"}).text) if isnum(player.find("td", {"class": "mod-stat mod-fb"}).find("span", {"class": "side mod-both"}).text) else 0
 
     played_agents.sort()
-    avg_acs = avg_acs / 5
-    atk_rating = atk_rating / 5 if not atk_rating == 0 else pd.NA
-    def_rating = def_rating / 5 if not def_rating == 0 else pd.NA
-    kast = kast / 500 if not kast == 0 else pd.NA
+    acs /= 5
+    kast = kast / 5 if kast != 0 else None
+    rating = rating / 5 if rating != 0 else None
     played_agents = [agents.index(agent) for agent in played_agents]
-    return [played_agents, fks, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast]
+    return played_agents + [fks, rating, acs, kills, assists, deaths]
 
-def parse_map(econ, perf, map, t1, t2):
+def parse_map(map, t1, t2):
     try:
         map_id = map.get("data-game-id")
-        if map_id.isdigit():
 
+        if map_id.isdigit():
             # find map name
             map_name = map.find("div", {"class": "vm-stats-game-header"}).find("div", {"class": "map"}).find("span", {"style": "position: relative;"}).text.strip().split("\t")[0]
 
@@ -236,59 +203,16 @@ def parse_map(econ, perf, map, t1, t2):
             t1_overview = map.find("div", {"class": "vm-stats-game-header"}).find("div", {"class": "team"})
             t1_rds = int(t1_overview.find("div", {"class", "score"}).text.strip())
             t2_rds = int(map.find("div", {"class": "vm-stats-game-header"}).find("div", {"class": "team mod-right"}).find("div", {"class": "score"}).text.strip())
-            if t1_overview.find("div", {"class": "score mod-win"}):
-                winner = t1
-                if t1_rds > 13:
-                    overtime = True
-                else:
-                    overtime = False
-            else:
-                winner = t2
-                if t2_rds > 13:
-                    overtime = True
-                else:
-                    overtime = False
+            winner = True if t1_overview.find("div", {"class": "score mod-win"}) else False
 
-            # find round scores
-            t1_overview = t1_overview.find_all("div")[1]
-            t1_atk_rds = int(t1_overview.find("span", {"class": "mod-t"}).text)
-            t1_def_rds = int(t1_overview.find("span", {"class": "mod-ct"}).text)
-            t2_overview = map.find("div", {"class": "vm-stats-game-header"}).find("div", {"class": "team mod-right"}).find("div")
-            t2_atk_rds = int(t2_overview.find("span", {"class": "mod-t"}).text)
-            t2_def_rds = int(t2_overview.find("span", {"class": "mod-ct"}).text)
-
-            # find overtime rounds
-            if overtime:
-                t1_overtime_rds = int(t1_overview.find("span", {"class": "mod-ot"}).text)
-                t2_overtime_rds = int(t2_overview.find("span", {"class": "mod-ot"}).text)
-            else:
-                t1_overtime_rds = None
-                t2_overtime_rds = None
-            
             player_stats = map.find_all("table", {"class": "wf-table-inset mod-overview"})
-            t1_stats = parse_player_stats(player_stats[0].find("tbody")) # agents, fks, atk_fks, def_fks, atk_rating, def_rating, avg_acs, kills, assists, deaths, kast
-            t2_stats = parse_player_stats(player_stats[1].find("tbody"))
-            econ_stats = parse_econ_stats(econ, map_id) # t1_pistols, t2_pistols, t1_ecos_won, t1_ecos_lost, t2_ecos_won, t2_ecos_lost, t1_fullbuys_won, t1_fullbuys_lost, t2_fullbuys_won, t2_fullbuys_lost
-            performance_stats = parse_performance_stats(perf, map_id) # t1_mks, t1_clutches, t1_econ, t2_mks, t2_clutches, t2_econ,6 t1_plants,7 t1_defuses,8 t2_plants,9 t2_defuses
-            return  [
-                        int(map_id), t1, t2, winner, maps.index(map_name), 
-                        t1_stats[0][0], t1_stats[0][1], t1_stats[0][2], t1_stats[0][3], t1_stats[0][4],
-                        t2_stats[0][0], t2_stats[0][1], t2_stats[0][2], t2_stats[0][3], t2_stats[0][4],
-                        t1_rds, t1_atk_rds, t1_def_rds, t2_rds, t2_atk_rds, t2_def_rds, 
-                        performance_stats[7], (performance_stats[8] - performance_stats[7]), performance_stats[9], (performance_stats[6] - performance_stats[9]), 
-                        (performance_stats[6] - performance_stats[9]), performance_stats[9], (performance_stats[8]-performance_stats[7]), performance_stats[7], 
-                        overtime, t1_overtime_rds, t2_overtime_rds,
-                        t1_stats[1], t1_stats[2], t1_stats[3], t2_stats[1], t2_stats[2], t2_stats[3],
-                        econ_stats[0], econ_stats[1], 
-                        econ_stats[2], econ_stats[3], econ_stats[4], econ_stats[5], 
-                        econ_stats[6], econ_stats[7], econ_stats[8], econ_stats[9],
-                        t1_stats[4], t1_stats[5], t2_stats[4], t2_stats[5],
-                        t1_stats[6], t2_stats[6],
-                        t1_stats[7], t1_stats[8], t1_stats[9], t1_stats[10],
-                        t2_stats[7], t2_stats[8], t2_stats[9], t2_stats[10],
-                        performance_stats[0], performance_stats[1], performance_stats[2], 
-                        performance_stats[3], performance_stats[4], performance_stats[5]
-                    ]
+            gen_stats = pd.Series(data=[int(map_id), t1, t2, None, winner, maps.index(map_name), t1_rds, t2_rds], index=['map_id', 't1', 't2', 'date', 'winner', 'map', 't1_rds', 't2_rds'])
+            t1_cols = ["t1_agent1", "t1_agent2", "t1_agent3", "t1_agent4", "t1_agent5", 't1_fks', 't1_rating', 't1_acs', 't1_kills', 't1_assists', 't1_deaths']
+            t2_cols = ["t2_agent1", "t2_agent2", "t2_agent3", "t2_agent4", "t2_agent5", 't2_fks', 't2_rating', 't2_acs', 't2_kills', 't2_assists', 't2_deaths']
+            t1_stats = pd.Series(data=(parse_player_stats(player_stats[0].find("tbody"))), index=t1_cols)
+            t2_stats = pd.Series(data=parse_player_stats(player_stats[1].find("tbody")), index=t2_cols)
+            stats = pd.concat([gen_stats, t1_stats, t2_stats])   
+            return stats
     except Exception as e:
         print(f"Error parsing map: {str(e)}")
         traceback.print_exc()
@@ -325,106 +249,94 @@ def parse_history(history):
         return net
 
 def process_match_link(link, links):
-    print(f"Processing match {links.index(link)} out of {len(links)} ({round(links.index(link)/len(links)* 100, 2) }%)")
+    print(f"Processing match {links.index(link) + 1} out of {len(links)} ({round(links.index(link)/len(links)* 100, 2) }%)")
     match_id = re.search(r"/(\d+)/", link).group(1)
     match_link = site + link
     try:
-        urls = [
-            match_link,
-            f"{match_link}/?game=all&tab=performance",
-            f"{match_link}/?game=all&tab=economy"
-        ]
-        task_to_url = {}
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-            tasks = []
-            for url in urls:
-                task = executor.submit(fetch_data, url)
-                tasks.append(task)
-                task_to_url[task] = url
-
-            results = []
-            for future in concurrent.futures.as_completed(tasks):
-                url = task_to_url[future]
-                result = future.result()
-                results.append((url, result))
-
-            results.sort(key=lambda x: urls.index(x[0]))
-            soup = results[0][1]
-            perf = results[1][1]
-            econ = results[2][1]
+        soup = fetch_data(match_link)
+        date = soup.find("div", {"class": "moment-tz-convert"}).get("data-utc-ts").split()[0]
+        t1 = get_team(soup.find("a", {"class": "match-header-link wf-link-hover mod-1"}).get("href"))
+        t2 = get_team(soup.find("a", {"class": "match-header-link wf-link-hover mod-2"}).get("href"))
+        score = soup.find("div", {"class": "match-header-vs-score"}).find("div", {"class": "js-spoiler"}).text.split(":")
+        score[0] = int(score[0].strip()) if score[0].strip().isdigit() else None
+        score[1] = int(score[1].strip()) if score[1].strip().isdigit() else None
+        h2h = parse_h2h(soup.find("div", {"class": "match-h2h-matches"}))
+        t1_past = parse_history(soup.find_all("div", {"class": "match-histories"})[0]) if len(soup.find_all("div", {"class": "match-histories"})) > 0 else None
+        t2_past = parse_history(soup.find_all("div", {"class": "match-histories"})[1]) if len(soup.find_all("div", {"class": "match-histories"})) > 0 else None
+        winner = score[0] > score[1]
+        odds = soup.find_all("span", {"class": "match-bet-item-odds"})
+        best_odds =  0
+        worst_odds = 1
+        if odds is not None:
+            for odd in odds:
+                val = float(odd.text[1:])
+                val = 1/(val/100) if val > 0 else 0
+                if not winner:
+                    val = 1 - val
+                if val > best_odds and val != 1:
+                    best_odds = val
+                if val < worst_odds and val != 0:
+                    worst_odds = val
         
-            date = soup.find("div", {"class": "moment-tz-convert"}).get("data-utc-ts").split()[0]
-            t1 = get_team(soup.find("a", {"class": "match-header-link wf-link-hover mod-1"}).get("href"))
-            t2 = get_team(soup.find("a", {"class": "match-header-link wf-link-hover mod-2"}).get("href"))
-            score = soup.find("div", {"class": "match-header-vs-score"}).find("div", {"class": "js-spoiler"}).text.split(":")
-            score[0] = int(score[0].strip()) if score[0].strip().isdigit() else None
-            score[1] = int(score[1].strip()) if score[1].strip().isdigit() else None
-            h2h = parse_h2h(soup.find("div", {"class": "match-h2h-matches"}))
-            t1_past = parse_history(soup.find_all("div", {"class": "match-histories"})[0]) if len(soup.find_all("div", {"class": "match-histories"})) > 0 else None
-            t2_past = parse_history(soup.find_all("div", {"class": "match-histories"})[1]) if len(soup.find_all("div", {"class": "match-histories"})) > 0 else None
-            winner = score[0] > score[1]
-            odds = soup.find_all("span", {"class": "match-bet-item-odds"})
-            best_odds =  0
-            worst_odds = 1
-            if odds is not None:
-                for odd in odds:
-                    val = float(odd.text[1:])
-                    val = 1/(val/100) if val > 0 else 0
-                    if not winner:
-                        val = 1 - val
-                    if val > best_odds and val != 1:
-                        best_odds = val
-                    if val < worst_odds and val != 0:
-                        worst_odds = val
-            vetos = []
-            match_df = pd.DataFrame()  # Define empty DataFrame
-            if soup.find("div", {"class": "match-header-note"}):
-                vetos = parse_vetos(t1, t2, soup.find("div", {"class": "match-header-note"}).text)
-                if vetos != "no vetos":
-                    vetos_data = [match_id] + list(vetos) + [winner, score[0], score[1], h2h, t1_past, t2_past, best_odds, worst_odds, date]
-                    match_df = pd.DataFrame([vetos_data], columns=series_headers)
+        if 0 < best_odds < 1 and 0 < worst_odds < 1:
+            odds = (best_odds + worst_odds) / 2
+        elif 0 < best_odds < 1:
+            odds = best_odds
+        elif 0 < worst_odds < 1:
+            odds = worst_odds
+        else:
+            odds = None
 
-            map_stats_list = []
-            for map in soup.find("div", {"class": "vm-stats-container"}).find_all("div", {"class": "vm-stats-game"}):
-                if isinstance(map, Tag):  # Check if the child is a Tag
-                    map_stats = parse_map(econ, perf, map, t1, t2)
-                    if map_stats is not None:
-                        map_stats.append(date)
-                        map_stats_list.append(map_stats)
-            
-            map_stats_df = pd.DataFrame(map_stats_list, columns=map_headers)
-            return match_df, map_stats_df
+        match_stats = None
+        vetos = parse_vetos(t1, t2, soup.find("div", {"class": "match-header-note"}).text) if soup.find("div", {"class": "match-header-note"}) else 'no vetos'
+        if vetos != 'no vetos':
+            match_stats = pd.Series(data=([match_id, t1, t2, winner] + vetos + [score[0], score[1], h2h, t1_past, t2_past, odds, date]), index=series_headers)
+
+        map_stats = []
+        for map in soup.find("div", {"class": "vm-stats-container"}).find_all("div", {"class": "vm-stats-game"}):
+            if isinstance(map, Tag):  # Check if the child is a Tag
+                stats = parse_map(map, t1, t2)
+                if stats is not None:
+                    stats.at['date'] = date
+                    map_stats.append(stats)
+        
+        return match_stats, map_stats
+    
     except Exception as e:
         print(f"Error processing match {match_id}: {str(e)}")
         traceback.print_exc()
-        return None, None
+        return None
 
 def fetch_data(url):
     response = requests.get(url)
     return BeautifulSoup(response.text, "html.parser")
 
-def process_all_matches(links, tier1):
+def process_matches(links, tier1):
     global series_df, maps_df
+
+    match_stats_list = []
+    map_stats_list = []
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         futures = [executor.submit(process_match_link, link, links) for link in links]
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
-            if result is not None:
-                match_df, map_stats_df = result
-                if match_df is not None and not match_df.empty:   
-                    series_df = (match_df.copy() if series_df.empty else pd.concat([series_df, match_df], ignore_index=True, sort=False))
-                if map_stats_df is not None and not map_stats_df.empty:
-                    maps_df = (map_stats_df.copy() if maps_df.empty else pd.concat([maps_df, map_stats_df], ignore_index=True, sort=False))
+            if not result is None:
+                match_stats, map_stats = result
+                if match_stats is not None:
+                    match_stats_list.append(match_stats)
+                map_stats_list.extend(map_stats)
+
+    series_df = pd.concat(match_stats_list, axis=1).T
+    maps_df = pd.concat(map_stats_list, axis=1).T
 
     # Save processed data
     if tier1:
         series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/raw/tier1_series.csv', index=False)
         maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/raw/tier1_maps.csv', index=False)
     else:
-        series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/series.csv', index=False)
-        maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/maps.csv', index=False)
+        series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/raw/series.csv', index=False)
+        maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/raw/maps.csv', index=False)
 
 # Remove cn matches (limited data)
 # def sanitize_tier1():
@@ -437,27 +349,19 @@ def process_all_matches(links, tier1):
 #     series.to_csv('data/tier1/series.csv', index=False)
 
 def process_all():
-    global series_df, maps_df
-    series_df = pd.DataFrame(columns=series_headers)
-    maps_df = pd.DataFrame(columns=map_headers)
-    process_all_matches(match_links, False)
+    process_matches(match_links, False)
 
 def process_tier1():
-    global series_df, maps_df
-    series_df = pd.DataFrame(columns=series_headers)
-    maps_df = pd.DataFrame(columns=map_headers)
-    process_all_matches(tier1_match_links, True)
+    process_matches(tier1_match_links, True)
 
 def update_all():
     global series_df, maps_df
     series_df = pd.read_csv('data/series.csv', index_col=False)
     maps_df = pd.read_csv('data/maps.csv', index_col=False)
-    process_all_matches(new_match_links, True)
+    process_matches(new_match_links, True)
 
 def update_tier1():
     global series_df, maps_df
     series_df = pd.read_csv('data/tier1/series.csv', index_col=False)
     maps_df = pd.read_csv('data/tier1/maps.csv', index_col=False)
-    process_all_matches(new_tier1_match_links, True)
-
-process_tier1()
+    process_matches(new_tier1_match_links, True)

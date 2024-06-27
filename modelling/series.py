@@ -5,11 +5,25 @@ from sklearn.metrics import classification_report, accuracy_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from joblib import dump, load
 from functools import partial
-from maps import get_map_pool, get_maps, get_agents, rename_team_cols
+from maps import get_map_pool, get_maps, rename_team_cols
 
 # Load data
 maps_df = pd.read_csv("data/raw/maps.csv")
 series_df = pd.read_csv("data/raw/series.csv", index_col=False)
+
+
+def get_agents(file):
+    agents = []
+    with open(file, "r") as f:
+        for line in f:
+            agents.append(line.strip("\n"))
+    return agents
+def get_agents(file):
+    agents = []
+    with open(file, "r") as f:
+        for line in f:
+            agents.append(line.strip("\n"))
+    return agents
 
 # Map, Agents data
 out_of_pool = get_map_pool("data/game_data/map_pool.txt")
@@ -33,11 +47,6 @@ def get_tier1(df):
     tier1 = pd.read_csv('data/tier1/teams.csv').iloc[:,0].tolist()
     df = df.loc[(df['t1'].isin(tier1) & df['t2'].isin(tier1))]
     return df.copy(deep=True)
-
-def between_dates(df, sd, ed):
-    return_df = df.copy(deep=True)
-    return_df = return_df.loc[((return_df['date'] >= sd) & (return_df['date'] <= ed))]
-    return return_df.copy(deep=True)
 
 def get_region(team):
     amer = pd.read_csv("data/tier1/teams/amer.csv").iloc[:,0].tolist()
@@ -80,22 +89,33 @@ def remove_cn(df):
     return return_df.copy(deep=True)
 
 # Get winrate of a team on a specific map, before a date over a count of maps
-def get_team_wr_by_map(maps_df, team, map, date, count):
-    
-    # Sort and Filter
-    maps_df.sort_values(by="date", ascending=True, inplace=True)
-    maps_df = maps_df.loc[((maps_df["map"] == map) & ((maps_df["t1"] == team) | (maps_df["t2"] == team)))]
+def get_team_wr_by_map(maps, team, map, date, count):
+    maps = maps.copy(deep=True)
 
-    if len(maps_df.index) == 0:
+    def get_winner(row):
+        if row['t1'] == team and row['winner']:
+            row['winner'] == True
+        elif row['t2'] == team and not row['winner']:
+            row['winner'] == True
+        else:
+            row['winner'] == False
+        return row
+
+    # Sort and Filter
+    maps.sort_values(by="date", ascending=True, inplace=True)
+    maps = maps.loc[((maps["map"] == map) & ((maps["t1"] == team) | (maps["t2"] == team)))]
+
+    if len(maps.index) == 0:
         return 0
-    elif count == 0 or maps_df[maps_df["date"] < date].shape[0] < count:
-        maps_df = maps_df[maps_df["date"] < date]
+    elif count == 0 or maps[maps["date"] < date].shape[0] < count:
+        maps = maps[maps["date"] < date]
     else:
-        maps_df = maps_df[maps_df["date"] < date].tail(count)
+        maps = maps[maps["date"] < date].tail(count)
 
     # Count wins and return
-    wins = maps_df["winner"].value_counts()[team] if team in maps_df["winner"].values else 0
-    games = len(maps_df)
+    maps = maps.apply(get_winner, axis=1)
+    wins = maps["winner"].sum()
+    games = len(maps)
     win_rate = wins / games if games > 0 else 0
     return win_rate
 
@@ -233,11 +253,11 @@ def get_h2h_map_history(series_df, t1, t2, map, date):
 
 # Get win, pick, ban, and play rate of a team on a map before a date
 def get_team_data_by_map_row(row, count=20):
-    t1_win = get_team_wr_by_map(maps_df, row[1], row[4], row[3], count)
-    t1_pick, t1_ban, t1_play = get_team_pbrate_by_map(series_df, row[1], row[4], row[3], count)
-    t2_win = get_team_wr_by_map(maps_df, row[2], row[4], row[3], count)
-    t2_pick, t2_ban, t2_play = get_team_pbrate_by_map(series_df, row[2], row[4], row[3], count)
-    row[11:19] = [t1_win, t1_pick, t1_ban, t1_play, t2_win, t2_pick, t2_ban, t2_play]
+    t1_win = get_team_wr_by_map(maps_df, row['t1'], row['map'], row['date'], count) #maps_df, team, map, date, count
+    t1_pick, t1_ban, t1_play = get_team_pbrate_by_map(series_df, row['t1'], row['map'], row['date'], count) # team, map, date, count
+    t2_win = get_team_wr_by_map(maps_df, row['t2'], row['map'], row['date'], count) 
+    t2_pick, t2_ban, t2_play = get_team_pbrate_by_map(series_df, row['t2'], row['map'], row['date'], count)
+    row.loc[['avg_win%', 'avg_pick%', 'avg_ban%', 'avg_play%']] = [(t1_win + t2_win) / 2, (t1_pick + t2_pick) / 2, (t1_play + t2_play) / 2, (t1_ban + t2_ban) / 2]
     return row
 
 # Get pick, ban, play, and win rates of a team on all maps, before a date over a count of series
@@ -252,14 +272,6 @@ def get_team_data(team, date, count, format):
     else:
         return pd.concat([pb_data, map_data], axis=1)
     
-# Vectorized team data function
-def get_team_data_row(row, count):
-    t1_data = get_team_data(row[1], row[10], count, "list")
-    t2_data = get_team_data(row[2], row[10], count, "list")
-    row[11:51] = t1_data
-    row[51:91] = t2_data
-    return row
-
 def get_team_wr_by_all_maps_row(row):
 
     # Iterate over maps and get winrates
@@ -305,8 +317,7 @@ def explode_map_choices(series_df):
             'played': map_played_status(row, map),
             'net_h2h': row['net_h2h'],
             'past_diff': (row['t1_past'] - row['t2_past']),
-            'best_odds': row['best_odds'],
-            'worst_odds': row['worst_odds']
+            'odds': row['odds'],
         }), axis=1)
         data.append(temp_df)
 
@@ -317,32 +328,31 @@ def explode_map_choices(series_df):
     exploded_df.sort_values(by="match_id", ascending=True, inplace=True)
 
     # Get win, pick, ban, and playrates
-    exploded_df[['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%']] = 0
-    exploded_df = exploded_df.apply(get_team_data_by_map_row, raw=True, axis=1)
-    exploded_df = exploded_df.loc[~((exploded_df['t1_win%'] == 0) & (exploded_df['t1_pick%'] == 0) & (exploded_df['t1_ban%'] == 0) & (exploded_df['t1_play%'] == 0) 
-                    & (exploded_df['t2_win%'] == 0) & (exploded_df['t2_pick%'] == 0) & (exploded_df['t2_ban%'] == 0) & (exploded_df['t2_play%'] == 0))]
+    exploded_df[['avg_win%', 'avg_pick%', 'avg_ban%', 'avg_play%']] = 0
+    exploded_df = exploded_df.apply(get_team_data_by_map_row, axis=1)
+    exploded_df = exploded_df.loc[~((exploded_df['avg_win%'] == 0) & (exploded_df['avg_pick%'] == 0) & (exploded_df['avg_ban%'] == 0) & (exploded_df['avg_play%'] == 0))]
     return exploded_df.copy(deep=True)
 
-def transform_series_stats(sds, models, map_pick_model):
+def transform_series_stats(sds, model, map_pick_model):
+    def get_mapwin_row(row):
+        map_features = ['round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff']
+        df = row[map_features]
+
+        map_pick_features = ['avg_play%', 'avg_pick%', 'avg_ban%', 'avg_win%']
+
+        pick_df = pd.DataFrame(data=[row[map_pick_features].tolist()], columns=map_pick_features)
+
+        row['play%'] = map_pick_model.predict_proba(pick_df)[0][0]
+
+        row['t1_winchance'] = model.predict_proba(df)[0][0] if model is not None else None
+        row['t2_winchance'] = model.predict_proba(df)[0][1] if model is not None else None
+        return row
     # Fill Nan values
     sds = sds.fillna(0)
-    
-    def get_mapwin_row(row):
-        map_features = ['round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff', 'kadr_diff']
-        df = pd.DataFrame(data=[[row[19], row[22], row[27], row[28], row[29], row[30], row[31], row[32]]], columns=map_features)
-        map_pick_features = ['t1_win%', 't1_pick%', 't1_ban%', 't1_play%', 't2_win%', 't2_pick%', 't2_ban%', 't2_play%']
-        # pickdata = [row[11], row[12], row[13], row[15], row[16], row[17], ((row[14] + row[18]) / 2)]
-        pick_df = pd.DataFrame(data=[row[11:19]], columns=map_pick_features)
-        row[38] = map_pick_model.predict_proba(pick_df)[0][0]
-
-        model = models[row[4]]
-        row[39] = model.predict_proba(df)[0][0] if model is not None else None
-        row[40] = model.predict_proba(df)[0][1] if model is not None else None
-        return row
 
     # Get map play chance, and each team's winrate
     sds[['play%', 't1_winchance', 't2_winchance']] = 0
-    sds = sds.apply(get_mapwin_row, raw=True, axis=1)
+    sds = sds.apply(get_mapwin_row, axis=1)
     sds = sds.dropna()
 
     # Compress matches
