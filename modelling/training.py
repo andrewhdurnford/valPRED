@@ -123,10 +123,21 @@ def train_map_model(tmd, map):
     report = classification_report(y_test, y_pred)
     print(f'Accuracy of map model: {accuracy:.2f}')
     print(report)
+
+    feature_importances = best_gbm_model.feature_importances_
+
+    # Assuming you have the feature names in a list called `feature_names`
+    feature_importance_df = pd.DataFrame({
+        'feature': features,
+        'importance': feature_importances
+    }).sort_values(by='importance', ascending=False)
+
+    print(feature_importance_df)
+
     return best_gbm_model
 
 def train_series_winner_model(sds):
-    features = ['net_h2h', 'past_diff', 'winshare']
+    features = ['elo_diff', 'past_diff', 'winshare']
     X = sds[features]
     Y = sds['winner']
 
@@ -149,7 +160,7 @@ def train_series_winner_model(sds):
     random_search = RandomizedSearchCV(
         estimator=gbm_model,
         param_distributions=param_grid,
-        n_iter=1000,  # Number of parameter settings that are sampled
+        n_iter=5000,  # Number of parameter settings that are sampled
         scoring='accuracy',
         cv=5,
         verbose=1,

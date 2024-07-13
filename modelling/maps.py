@@ -1,5 +1,8 @@
 import pandas as pd, operator
 from datetime import datetime
+import warnings
+
+warnings.filterwarnings("ignore", message="X does not have valid feature names")
 
 # Functions to retrieve game data
 def save_map_pool(out_of_pool):
@@ -107,15 +110,15 @@ def get_team_map_stats(team, map, maps_df, date=datetime.today().strftime('%Y-%m
 
 def get_team_map_stats_df(maps_df):
     def get_map_stats_row(row, count=20):
-        t1_stats = get_team_map_stats(row['t1'], row['map'], maps_df, row['date'], count) # team, map, maps_df, date=datetime.today().strftime('%Y-%m-%d'), count
+        t1_stats = get_team_map_stats(row['t1'], row['map'], maps_df, row['date'], count)
         t2_stats = get_team_map_stats(row['t2'], row['map'], maps_df, row['date'], count)
-        stats_diff = row.loc[['map_id', 't1', 't2', 'winner', 'map', 'date']].tolist()
+        stats_diff = row.loc[['map_id', 't1', 't2', 'winner', 'date', 'map']].tolist()
         stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
         stats_diff_list.append(stats_diff)
         return row
 
     stats_diff_list = []
-    columns = ['map_id', 't1', 't2', 'winner', 'map', 'date', 'round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff']
+    columns = ['map_id', 't1', 't2', 'winner', 'date', 'map', 'round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff']
     maps_df.apply(get_map_stats_row, axis=1)
     df = pd.DataFrame(data=stats_diff_list, columns=columns)
     return df.copy(deep=True)
@@ -138,11 +141,11 @@ def get_series_map_stats_df(df, maps_df):
     def get_map_stats_row(row, count=20):
         t1_stats = get_team_map_stats(row['t1'], row['map'], maps_df, row['date'], count) 
         t2_stats = get_team_map_stats(row['t2'], row['map'], maps_df, row['date'], count)
-        stats_diff = row.tolist()[0:14]
+        stats_diff = row.tolist()[0:17]
         stats_diff.extend(map(operator.sub, t1_stats, t2_stats))
         stats_diff_list.append(stats_diff)
 
-    columns = ['match_id', 't1', 't2', 'date', 'map', 'winner', 'played', 'net_h2h', 'past_diff', 'odds',
+    columns = ['match_id', 't1', 't2', 'date', 'elo_diff', 'map', 'winner', 'played', 'net_h2h', 'past_diff', 'odds', 'best_odds', 'worst_odds',
                'avg_win%', 'avg_pick%', 'avg_ban%', 'avg_play%', 
                'round_wr_diff', 'fk_percent_diff', 'acs_diff', 'kills_diff', 'assists_diff', 'deaths_diff', 'kdr_diff']
 
@@ -169,7 +172,6 @@ def transform_series_stats_nd(sds, model, map_pick_model):
 
         row['t1_winchance'] = model.predict_proba(df)[0][0] if model is not None else None
         row['t2_winchance'] = model.predict_proba(df)[0][1] if model is not None else None
-        print(row['play%'], row['t1_winchance'], row['t2_winchance'])
         return row
 
     # Get map play chance, and each team's winrate
@@ -178,17 +180,18 @@ def transform_series_stats_nd(sds, model, map_pick_model):
     sds = sds.dropna()
 
     # Compress matches
-    sds = sds[['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'odds', 'play%', 't1_winchance', 't2_winchance']]
+    sds = sds[['match_id', 't1', 't2', 'date', 'elo_diff', 'winner', 'net_h2h', 'past_diff', 'odds', 'best_odds', 'worst_odds', 'play%', 't1_winchance', 't2_winchance']]
     sds = sds.sort_values(by='play%', ascending=True)
     matches = sds['match_id'].unique()
-    cols = ['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'odds', 'winshare']
+    cols = ['match_id', 't1', 't2', 'date', 'elo_diff', 'winner', 'net_h2h', 'past_diff', 'odds', 'best_odds', 'worst_odds', 'winshare']
     data = []
     for match in matches:
         df = sds.copy().loc[sds['match_id'] == match]
         df.drop(df.head(2).index, inplace=True) # Drop least likely maps
-        match_data = df.iloc[0].tolist()[:8]
+        match_data = df.iloc[0].tolist()[:11]
         pred_win = df['t1_winchance'].sum() / (df['t1_winchance'].sum() + df['t2_winchance'].sum()) 
         match_data.append(pred_win)
         data.append(match_data)
     sds = pd.DataFrame(data=data, columns=cols)
+    sds['elo_diff'] = sds['elo_diff'] / sds['elo_diff'].abs().max() 
     return sds.copy(deep=True)

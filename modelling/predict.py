@@ -1,13 +1,13 @@
 import pandas as pd, operator
 from joblib import load
 from series import get_team_wr_by_map, get_team_pbrate_by_map, get_map_in_pool, get_tier1
-from maps import get_team_map_stats, normalize_training_data
+from maps import get_team_map_stats, normalize_training_data, between_dates
 from IPython.display import display
 
 cn = pd.read_csv('data/tier1/teams/cn.csv').iloc[:,0].tolist()
 upcoming = get_tier1(pd.read_csv('data/raw/upcoming.csv', index_col=False))
 upcoming = upcoming.loc[~(upcoming['t1'].isin(cn) | upcoming['t2'].isin(cn))]
-maps = pd.read_csv('data/tier1/maps.csv')
+maps = between_dates(pd.read_csv('data/tier1/maps.csv'), '2024-01-01', '2025-01-01')
 series = pd.read_csv('data/tier1/series.csv')
 teams = pd.read_csv('data/tier1/teams.csv')
 
@@ -64,7 +64,7 @@ def explode_preds(pred_df):
     return exploded_df.copy(deep=True)
 
 def get_preds_map_stats_df(df, maps_df):
-    def get_map_stats_row(row, count=5):
+    def get_map_stats_row(row, count=20):
         t1_stats = get_team_map_stats(row['t1'], row['map'], maps_df, row['date'], count) # team, map, maps_df, date=datetime.today().strftime('%Y-%m-%d'), count
         t2_stats = get_team_map_stats(row['t2'], row['map'], maps_df, row['date'], count)
         stats_diff = row.iloc[0:13].tolist()
@@ -95,7 +95,6 @@ def transform_preds_stats(preds, models, map_pick_model):
 
         row['t1_winchance'] = model.predict_proba(df)[0][0] if model is not None else None
         row['t2_winchance'] = model.predict_proba(df)[0][1] if model is not None else None
-        print(row['play%'], row['t1_winchance'], row['t2_winchance'])
         return row
     
     # Get map play chance, and each team's winrate
@@ -124,8 +123,8 @@ def predict_series_outcomes(sds, series_winner_model):
     return_df = sds.copy(deep=True)
     
     def series_win_row(row):
-        cols = ['net_h2h', 'past_diff', 'winshare']
-        df = pd.DataFrame(data=[[row['net_h2h'], row['past_diff'], row['winshare']]], columns=cols)
+        cols = ['past_diff', 'winshare']
+        df = pd.DataFrame(data=[[row['past_diff'], row['winshare']]], columns=cols)
         row['pred_win%'] = series_winner_model.predict_proba(df)[0][0]
         return row
     

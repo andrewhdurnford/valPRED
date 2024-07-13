@@ -2,7 +2,7 @@ from joblib import dump, load
 import pandas as pd, operator
 from IPython.display import display
 from datetime import datetime
-from maps import rename_team_cols
+from maps import rename_team_cols, between_dates
 from training import train_map_model
 from predict import get_team_fullname
 
@@ -65,11 +65,13 @@ def process_series(series, maps):
     series = series[['match_id', 't1', 't2', 'date', 'winner', 'past_diff', 'odds']]
     series = get_series_map_stats_df(series, maps)
 
-    model = train_map_model(series, -1)
+    model = train_map_model(between_dates(series, '2023-01-01', '2024-01-01'), -1)
     dump(model, filename='models/tier2.joblib')
+    # model = load('models/tier2.joblib')
 
     series['win%'] = 0
     series = series.apply(get_mapwin_row, axis=1).sort_values(by='date', ascending=False)
+    simulate_bets(between_dates(series, '2024-01-01', '2025-01-01'), 1000)
     series.to_csv('data/t2.csv', index=False)
     return series
 
@@ -78,5 +80,53 @@ def test_series_winner_model(sp):
     correct = len(df.loc[(((df['win%'] > 0.5) & (df['winner'] == True)) | ((df['win%'] < 0.5) & (df['winner'] == False)))].index)
     return correct / len(df.index)
 
+def simulate_bets(predictions, bankroll):
+    bets = 0
+    won = 0
+    lost = 0
+    betsize = 50
+    start = bankroll
+    dog = 0
+    predictions = predictions.sort_values(by='date', ascending=True)
+    cols = ['match_id', 't1', 't2', 'correct', 'date', 'bankroll', 'betsize', '$win', '$lose', 'best', 'worst']
+    data = []
+    for _, row in predictions.iterrows():
+        # betsize = bankroll * 0.1
+        if row['win%'] > row['odds'] and row['odds'] > 0.1: 
+            bets += 1
+            if row['odds'] < 0.5:
+                dog += 1
+
+            if row['winner']: 
+                bankroll += (betsize * 1/row['odds']) - betsize
+                won += 1
+                data.append([row['match_id'], row['t1'], row['t2'], True, row['date'], bankroll, betsize, (betsize * 1/row['odds']) - betsize, betsize, row['odds'], row['odds']])
+
+            else:
+                bankroll -= betsize
+                lost += 1
+                data.append([row['match_id'], row['t1'], row['t2'], False, row['date'], bankroll, betsize, (betsize * 1/row['odds']) - betsize, betsize, row['odds'], row['odds']])
+
+        elif row['win%'] < row['odds'] and row['odds'] < 0.9:
+            bets += 1
+            if row['odds'] > 0.5:
+                dog += 1
+
+            if row['winner']:
+                bankroll -= betsize
+                lost += 1
+                data.append([row['match_id'], row['t1'], row['t2'], False, row['date'], bankroll, betsize, (betsize * 1/(1 - row['odds'])) - betsize, betsize, row['odds'], row['odds']])
+
+            else:
+                bankroll += (betsize * 1/(1 - row['odds'])) - betsize
+                won += 1
+                data.append([row['match_id'], row['t1'], row['t2'], True, row['date'], bankroll, betsize, (betsize * 1/(1 - row['odds'])) - betsize, betsize, row['odds'], row['odds']])
+
+    accuracy = round(won / (won + lost) * 100, 2) if (won + lost) > 0 else 0
+    expected_value = round((bankroll - start) / bets / betsize, 2)
+    dog = round(dog / bets * 100, 2)
+    print("Bets placed: " + str(bets) + " Ending bankroll: $" + str(round(bankroll, 2)) + " Accuracy: " + str(accuracy) + "%" + " EV: " + str(expected_value) + " Dog: " + str(dog) +"%")
+    # df = pd.DataFrame(data=data, columns=cols)
+    # return df
+
 ser = process_series(series, maps)
-print(test_series_winner_model(ser))

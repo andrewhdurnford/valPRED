@@ -6,7 +6,7 @@ team_dict = {}
 maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset', 'Abyss']
 agents = ["Astra", "Breach", "Brimstone", "Chamber", "Clove", "Cypher", "Deadlock", "Fade", "Gekko", "Harbor", "Iso", 
           "Jett", "Kayo", "Killjoy", "Neon", "Omen", "Phoenix", "Raze", "Reyna", "Sage", "Skye", "Sova", "Viper", "Yoru"]
-series_headers = ["match_id", "t1", "t2", "winner", "t1_ban1", "t1_ban2", "t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "t1_mapwins", "t2_mapwins", "net_h2h", "t1_past", "t2_past", "odds", "date"]
+series_headers = ["match_id", "t1", "t2", "winner", "t1_ban1", "t1_ban2", "t2_ban1", "t2_ban2", "t1_pick", "t2_pick", "remaining", "t1_mapwins", "t2_mapwins", "net_h2h", "t1_past", "t2_past", "odds", "best_odds", "worst_odds", "date"]
 
 site = "https://www.vlr.gg"
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -290,7 +290,7 @@ def process_match_link(link, links):
         match_stats = None
         vetos = parse_vetos(t1, t2, soup.find("div", {"class": "match-header-note"}).text) if soup.find("div", {"class": "match-header-note"}) else 'no vetos'
         if vetos != 'no vetos':
-            match_stats = pd.Series(data=([match_id, t1, t2, winner] + vetos + [score[0], score[1], h2h, t1_past, t2_past, odds, date]), index=series_headers)
+            match_stats = pd.Series(data=([match_id, t1, t2, winner] + vetos + [score[0], score[1], h2h, t1_past, t2_past, odds, best_odds, worst_odds, date]), index=series_headers)
 
         map_stats = []
         for map in soup.find("div", {"class": "vm-stats-container"}).find_all("div", {"class": "vm-stats-game"}):
@@ -365,3 +365,5 @@ def update_tier1():
     series_df = pd.read_csv('data/tier1/series.csv', index_col=False)
     maps_df = pd.read_csv('data/tier1/maps.csv', index_col=False)
     process_matches(new_tier1_match_links, True)
+
+process_tier1()

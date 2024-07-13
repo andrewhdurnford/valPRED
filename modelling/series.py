@@ -312,12 +312,15 @@ def explode_map_choices(series_df):
             't1': row['t1'],
             't2': row['t2'],
             'date': row['date'],
+            'elo_diff': row['elo_diff'],
             'map': map,
             'winner': row['winner'],
             'played': map_played_status(row, map),
             'net_h2h': row['net_h2h'],
             'past_diff': (row['t1_past'] - row['t2_past']),
             'odds': row['odds'],
+            'best_odds': row['best_odds'],
+            'worst_odds': row['worst_odds'],
         }), axis=1)
         data.append(temp_df)
 
@@ -356,10 +359,10 @@ def transform_series_stats(sds, model, map_pick_model):
     sds = sds.dropna()
 
     # Compress matches
-    sds = sds[['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds', 'play%', 't1_winchance', 't2_winchance']]
+    sds = sds[['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'odds', 'best_odds', 'worst_odds', 'play%', 't1_winchance', 't2_winchance']]
     sds = sds.sort_values(by='play%', ascending=True)
     matches = sds['match_id'].unique()
-    cols = ['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'best_odds', 'worst_odds', 'winshare']
+    cols = ['match_id', 't1', 't2', 'date', 'winner', 'net_h2h', 'past_diff', 'odds', 'best_odds', 'worst_odds', 'winshare']
     data = []
     for match in matches:
         df = sds.copy().loc[sds['match_id'] == match]
