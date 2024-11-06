@@ -48,6 +48,7 @@ The primary goal of this project is to develop a predictive model for Valorant m
 - **Simulated Outcomes**:
    - **Average Odds**: Simulations using average odds produced an EV of ~1.2, yielding a profit range of $1000-$2000 for the 2024 season.
    - **Max/Min Odds**: Higher EV of ~1.4 with a profit range of $2000-$3000 over the 2024 season.
+   - **Comments**: Regardless of the method of odds used, it is clear that esports betting websites heavily favour the favourite; the model heavily favoured bets on the underdog, with 72% of bets placed on underdogs in the Average Odds simulation, and 76% placed on underdogs in the Min/Max Odds simulation.
    ![Graph of Bankroll vs Bet count](data/images/Bankroll.png)
 
 ### Prerequisites
