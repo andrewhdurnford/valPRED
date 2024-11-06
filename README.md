@@ -32,6 +32,7 @@ The primary goal of this project is to develop a predictive model for Valorant m
 - **Statistical Transformation**: Raw stats were converted into more descriptive metrics (e.g., kills per round) to improve model interpretability.
 - **Map Playrate Calculation**: Playrates of each map were calculated based on historical data, giving insight into map preferences for each team.
 - **Elo Rating System**: An Elo rating system was implemented to give a general measure of each team’s relative strength.
+- **Parameter selection**: Through experimentation, it was found that more complex parameters and statistics proved too unreliable, and sticking to a few, simpler datapoints produced much more reliable results
 
 ### Modeling
 - **Map Selection Prediction**: A GBM model was trained on map pick/ban data to predict likely maps while allowing for minor prediction inaccuracies.
