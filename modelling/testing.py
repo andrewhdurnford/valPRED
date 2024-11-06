@@ -109,7 +109,8 @@ def simulate_bets_best(predictions, bankroll):
     expected_value = round((bankroll - start) / bets / betsize, 2)
     dog = round(dog / bets * 100, 2)
     print("Bets placed: " + str(bets) + " Ending bankroll: $" + str(round(bankroll, 2)) + " Accuracy: " + str(accuracy) + "%" + " EV: " + str(expected_value) + " Dog: " + str(dog) +"%")
-
+    df = pd.DataFrame(data=data, columns=['match_id', 't1', 't2', 'correct', 'date', 'bankroll', 'betsize', 'earnings', 'bet_size', 'best_odds', 'worst_odds'])
+    return df
 
 def test_series_winner_model(sp):
     df = sp.copy(deep=True)

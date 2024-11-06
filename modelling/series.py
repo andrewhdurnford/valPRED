@@ -33,7 +33,7 @@ agents = get_agents("data/game_data/agents.txt")
 agents_id = list(range(len(agents)))
 
 def get_map_in_pool(date, index):
-    maps = [1,]*10
+    maps = [1,]*11
     for key, value in out_of_pool.items():
         if date >= key:
             continue

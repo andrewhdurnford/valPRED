@@ -348,6 +348,19 @@ def process_matches(links, tier1):
 #     series = series.loc[~(series['t1'].isin(cn) | series['t2'].isin(cn))]
 #     series.to_csv('data/tier1/series.csv', index=False)
 
+def append_match_links(new_links_file, match_links_file):
+    # Open the new match links file and read its content
+    with open(new_links_file, 'r') as new_links:
+        new_content = new_links.readlines()
+    
+    # Open the tier1 match links file and append the new content
+    with open(match_links_file, 'a') as match_links:
+        match_links.writelines(new_content)
+    
+    # Clear the new match links file
+    open(new_links_file, 'w').close()
+
+
 def process_all():
     process_matches(match_links, False)
 
@@ -365,5 +378,4 @@ def update_tier1():
     series_df = pd.read_csv('data/tier1/series.csv', index_col=False)
     maps_df = pd.read_csv('data/tier1/maps.csv', index_col=False)
     process_matches(new_tier1_match_links, True)
-
-process_tier1()
+    append_match_links('scraping/new_tier1_match_links', 'scraping/tier1_match_links') 

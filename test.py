@@ -12,6 +12,9 @@ def calculate_net_earnings(data):
         team = teams[teams['id'] == row['team']]
         row['teamname'] = team['fullname'].values[0]
         return row
+    
+    correct = row['']
+    
     # Determine the net earnings for each game based on the 'correct' column
     data['t1_earnings'] = data.apply(lambda row: row['$win'] if row['correct'] else -row['$lose'], axis=1)
     data['t2_earnings'] = data.apply(lambda row: -row['$lose'] if row['correct'] else row['$win'], axis=1)

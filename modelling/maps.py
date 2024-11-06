@@ -32,26 +32,6 @@ def get_maps(file):
             maps.append(line.strip("\n"))
     return maps
 
-def rename_team_cols(df, team):
-    # Separate columns
-    t1 = df.loc[(df['t1'] == team)]
-    t2 = df.loc[(df['t2'] == team)]
-
-    # List of columns that begin with 't1' or 't2'
-    t1_columns = [col for col in t2.columns if col.startswith('t1')]
-    t2_columns = [col for col in t2.columns if col.startswith('t2')]
-
-    # Create a mapping of t1 to t2 and t2 to t1 columns
-    column_map = {t1: t2 for t1, t2 in zip(t1_columns, t2_columns)}
-    column_map.update({t2: t1 for t1, t2 in zip(t1_columns, t2_columns)})
-
-    # Rename the columns according to the mapping
-    t2_renamed = t2.rename(columns=column_map)  
-    df = pd.concat([t1, t2_renamed])
-
-    return df
-
-
 def between_dates(df, sd, ed):
     return_df = df.copy(deep=True)
     return_df = return_df.loc[((return_df['date'] >= sd) & (return_df['date'] <= ed))]
