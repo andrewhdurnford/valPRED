@@ -11,10 +11,8 @@ A machine learning-driven predictor designed to estimate the outcomes of Valoran
    - [Modeling](#modeling)
    - [Results and Simulations](#results-and-simulations)
 3. [Installation and Setup](#installation-and-setup)
-4. [Usage](#usage)
-5. [Project Results](#project-results)
-6. [Future Improvements](#future-improvements)
-7. [Contributions](#contributions)
+4. [Future Improvements](#future-improvements)
+5. [Contributions](#contributions)
 
 ## Project Objectives
 The primary goal of this project is to develop a predictive model for Valorant matches, utilizing a data-driven approach to estimate match outcomes, predict map selections, and assess the profitability of simulated betting strategies.
