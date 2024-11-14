@@ -54,9 +54,6 @@ The primary goal of this project is to develop a predictive model for Valorant m
 - Ensure Python 3.x is installed on your system.
 - pip install requirements.txt
 
-## Project Results
-Summary of predictive accuracy, profitability of simulated strategies, and observed trends in model performance.
-
 ## Future Improvements
 - Integration of advanced metrics as they become available across leagues.
 - Improved map selection model to account for new/cycled maps with low data availability.
