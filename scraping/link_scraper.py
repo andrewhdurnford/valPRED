@@ -43,7 +43,6 @@ def region_from_event(event):
 cfg = load_config()
 site = cfg["scraping"]["site"]
 tier1_events = cfg["scraping"]["tier1_events"]
-all_events = cfg["scraping"].get("all_events", tier1_events)
 team_cols = ['id', 'linkname', 'fullname', 'abbrev', 'secondary_id']
 request_attempts = cfg["scraping"].get("request_attempts", 2)
 connect_timeout = cfg["scraping"].get("connect_timeout_seconds", 5)
@@ -136,13 +135,13 @@ def read_team_links_from_db(regions=None):
 
 
 def write_links(path, links):
+    # Plain LF lines, not csv.writer — csv.writer's default \r\n line terminator
+    # used to mix with LF appends in append_match_links and broke set dedup.
     unique_links = sorted(set(links))
     log(f"Writing {len(unique_links)} match links to {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="") as file:
-        writer = csv.writer(file)
-        for link in unique_links:
-            writer.writerow([link])
+    with open(path, "w") as file:
+        file.write("\n".join(unique_links) + ("\n" if unique_links else ""))
 
 def get_team_links(event):
     log(f"Fetching event teams: {event}")
@@ -287,41 +286,6 @@ def get_event_teams(event):
     log(f"Finished team metadata for event: {event}; teams: {len(teams)}")
     return teams
 
-def get_all_teams():
-    rows = []
-    log(f"Refreshing all team metadata across {len(all_events)} events")
-    with ThreadPoolExecutor(max_workers=event_workers) as executor:
-        future_to_event = {executor.submit(get_event_teams, event): event for event in all_events}
-        completed = 0
-        for future in as_completed(future_to_event):
-            event = future_to_event[future]
-            region = region_from_event(event)
-            try:
-                teams = future.result()
-            except Exception as exc:
-                log(f'{event} generated an exception: {exc}')
-                traceback.print_exc()
-                teams = []
-            for team in teams:
-                row = list(team[:len(team_cols)])
-                row.extend([None] * (len(team_cols) - len(row)))
-                rows.append(row + [region])
-            completed += 1
-            log(f"All-team metadata event progress: {completed}/{len(all_events)}")
-    write_team_rows(rows)
-
-def get_tier1_teams():
-    log(f"Refreshing tier 1 team metadata across {len(tier1_events)} events")
-    for event in tier1_events:
-        teams = get_event_teams(event)
-        region = region_from_event(event)
-        rows = []
-        for team in teams:
-            row = list(team[:len(team_cols)])
-            row.extend([None] * (len(team_cols) - len(row)))
-            rows.append(row + [region])
-        write_team_rows(rows)
-
 def get_all_tier1_teams():
     rows = []
     log(f"Refreshing tier 1 team metadata across {len(tier1_events)} events")
@@ -344,21 +308,6 @@ def get_all_tier1_teams():
             completed += 1
             log(f"Tier 1 metadata event progress: {completed}/{len(tier1_events)}")
     write_team_rows(rows)
-
-def get_all_matchlinks():
-    log("Building full all-event match-link file")
-    links = scrape_all_games(normalize_scrape_date(cfg["scraping"]["start_date"]), all_events)
-    write_links(ROOT / "scraping" / "match_links.csv", links)
-
-def update_all_matchlinks():
-    latest_date = read_latest_series_date()
-    if latest_date is None:
-        date = normalize_scrape_date(cfg["scraping"]["start_date"])
-    else:
-        date = (datetime.strptime(latest_date, "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
-    log(f"Updating all-event match links using start date {date}")
-    links = scrape_all_games(date, all_events)
-    write_links(ROOT / "scraping" / "new_match_links.csv", links)
 
 def get_tier1_matchlinks():
     log("Building full tier 1 match-link file")

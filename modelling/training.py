@@ -24,9 +24,14 @@ _PARAM_GRID = {
 }
 
 
+FEATURES = [
+    "elo_diff", "net_h2h", "past_diff",
+    "rating_diff", "acs_diff", "fkpm_diff", "fdpm_diff", "winrate_diff",
+]
+
+
 def train_series_winner_model(sds):
-    features = ["elo_diff", "net_h2h", "past_diff"]
-    X = sds[features].fillna(0)
+    X = sds[FEATURES].fillna(0)
     Y = sds["winner"]
 
     X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)

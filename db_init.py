@@ -17,7 +17,11 @@ def init_db():
             t1_mapwins INTEGER, t2_mapwins INTEGER,
             net_h2h REAL, t1_past REAL, t2_past REAL,
             odds REAL, best_odds REAL, worst_odds REAL, date TEXT,
-            t1_elo REAL, t2_elo REAL, elo_diff REAL
+            t1_elo REAL, t2_elo REAL, elo_diff REAL,
+            t1_fks INTEGER, t1_fds INTEGER, t1_rating REAL, t1_acs REAL,
+            t1_kills INTEGER, t1_deaths INTEGER, t1_assists INTEGER,
+            t2_fks INTEGER, t2_fds INTEGER, t2_rating REAL, t2_acs REAL,
+            t2_kills INTEGER, t2_deaths INTEGER, t2_assists INTEGER
         );
         CREATE TABLE IF NOT EXISTS maps (
             map_id INTEGER PRIMARY KEY,
@@ -56,6 +60,21 @@ def init_db():
     ):
         if col not in existing_map_cols:
             cur.execute(f"ALTER TABLE maps ADD COLUMN {col} INTEGER")
+
+    # Add team-aggregate columns to series if migrating an existing DB.
+    cur.execute("PRAGMA table_info(series)")
+    existing_series_cols = {row[1] for row in cur.fetchall()}
+    new_series_cols = [
+        ("t1_fks", "INTEGER"), ("t1_fds", "INTEGER"),
+        ("t1_rating", "REAL"), ("t1_acs", "REAL"),
+        ("t1_kills", "INTEGER"), ("t1_deaths", "INTEGER"), ("t1_assists", "INTEGER"),
+        ("t2_fks", "INTEGER"), ("t2_fds", "INTEGER"),
+        ("t2_rating", "REAL"), ("t2_acs", "REAL"),
+        ("t2_kills", "INTEGER"), ("t2_deaths", "INTEGER"), ("t2_assists", "INTEGER"),
+    ]
+    for col, coltype in new_series_cols:
+        if col not in existing_series_cols:
+            cur.execute(f"ALTER TABLE series ADD COLUMN {col} {coltype}")
 
     con.commit()
     con.close()

@@ -18,9 +18,10 @@ def _valid_market_probability(probability):
 
 
 def predict_series_outcomes(sds, series_winner_model):
+    from training import FEATURES
+
     return_df = sds.copy(deep=True)
-    features = ["elo_diff", "net_h2h", "past_diff"]
-    X = return_df[features].fillna(0)
+    X = return_df[FEATURES].fillna(0)
     return_df["pred_win%"] = series_winner_model.predict_proba(X)[:, 0]
     return_df = return_df[["match_id", "t1", "t2", "date", "winner", "pred_win%", "odds", "best_odds", "worst_odds"]]
     return return_df.copy(deep=True)
