@@ -1,61 +1,78 @@
-from joblib import dump, load
-import pandas as pd, os
-from IPython.display import display
+import sqlite3
+import sys
+import tomllib
+from pathlib import Path
 
-from maps import format_map_data_nd, format_veto_data_nd, transform_series_stats_nd, between_dates
-from series import explode_map_choices, transform_series_stats, get_tier1, get_map_in_pool, get_international, get_regional, remove_cn
-from training import train_map_pick_model, train_series_winner_model, train_map_model
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import pandas as pd
+from joblib import dump, load
+
+from paths import DB, MODELS, CONFIG
+from elo import compute_elo
+from series import between_dates, get_tier1, remove_cn, get_regional
+from training import train_series_winner_model
 from testing import simulate_bets, simulate_bets_best, test_series_winner_model, predict_series_outcomes
 
-# Load data
-maps = pd.read_csv('data/raw/tier1_maps.csv', index_col=False)
-series = pd.read_csv('data/tier1/series.csv', index_col=False)
-tier1 = pd.read_csv('data/tier1/teams.csv').iloc[:,0].tolist()
-vct_2023_start = '2023-02-13'
-vct_2024_start = '2024-02-16'
 
-# Process data (irrespective of training timeframe)
 def init():
-    mapdata = format_map_data_nd(maps)
-    mapdata.to_csv('data/tier1/processed/mapdata.csv', index=False)
-    vetos = explode_map_choices(series)
-    vetos.to_csv('data/tier1/processed/vetos.csv', index=False)
-
-# Train based on timeframe
-def train(tsd, ted, ed):
-    vetos = pd.read_csv('data/tier1/processed/vetos.csv', index_col=False)
-    mapdata = pd.read_csv('data/tier1/processed/mapdata.csv', index_col=False)
-    models = {}
-
-    # map_pick_model = train_map_pick_model(between_dates(vetos, tsd, ted))
-    # dump(map_pick_model, 'models/map_pick_model.joblib')
-    # model = train_map_model(between_dates(mapdata, tsd, ted), -1)
-    # dump(model, 'models/map_win.joblib')
-
-    model = load('models/map_win.joblib')
-    map_pick_model = load('models/map_pick_model.joblib')
-    series_winner_model = load('models/series_winner.joblib')
-
-    transformed_series_data = transform_series_stats_nd(format_veto_data_nd(vetos, maps), model, map_pick_model)
-    tsd_bd = between_dates(transformed_series_data, tsd, ted)
-
-    # series_winner_model = train_series_winner_model(tsd_bd)
-    # dump(series_winner_model, 'models/series_winner.joblib')
+    """Compute elo ratings for all series and write them to the series table."""
+    with sqlite3.connect(DB) as con:
+        compute_elo(con)
+    print("Elo ratings computed.")
 
 
-    tsd_ad = get_regional(remove_cn(between_dates(transformed_series_data, ted, ed)))
-    series_predictions = predict_series_outcomes(tsd_ad, series_winner_model)
-    series_predictions.to_csv('data/tier1/results/results.csv', index=False)
-    simulate_bets(series_predictions, 1000)
-    df = simulate_bets_best(series_predictions, 1000)
-    df.to_csv('data/tier1/results/results.csv', index=False)
+def train_series_win_model(start_date, end_date):
+    """Train the series winner model on regional tier-1 (non-CN) data in [start_date, end_date]."""
+    with sqlite3.connect(DB) as con:
+        df = pd.read_sql("SELECT * FROM series", con)
+        df = get_tier1(df, con)
+        df = remove_cn(df, con)
+        df = get_regional(df, con)
 
-def test(tsd, ted, ed):
-    series_winner_model = load('models/series_winner.joblib')
-    tsd_ad = get_regional(remove_cn(between_dates(tsd, ted, ed)))
-    series_predictions = predict_series_outcomes(tsd_ad, series_winner_model)
-    df = simulate_bets(series_predictions, 1000)
-    test_series_winner_model(series_predictions)
-    df.to_csv('data/tier1/results/results.csv', index=False)
+    df["past_diff"] = df["t1_past"].fillna(0) - df["t2_past"].fillna(0)
+    df = between_dates(df, start_date, end_date)
+    df = df.dropna(subset=["elo_diff", "net_h2h"])
 
-train(vct_2023_start, vct_2024_start, '2025-01-01')
+    MODELS.mkdir(exist_ok=True)
+    model = train_series_winner_model(df)
+    dump(model, MODELS / "series_winner.joblib")
+    print(f"Series winner model saved to {MODELS / 'series_winner.joblib'}")
+
+
+def test_series_winner(start_date, end_date):
+    """Backtest the series winner model on regional tier-1 (non-CN) data in [start_date, end_date]."""
+    model = load(MODELS / "series_winner.joblib")
+
+    with sqlite3.connect(DB) as con:
+        df = pd.read_sql("SELECT * FROM series", con)
+        df = get_tier1(df, con)
+        df = remove_cn(df, con)
+        df = get_regional(df, con)
+
+    df["past_diff"] = df["t1_past"].fillna(0) - df["t2_past"].fillna(0)
+    df = between_dates(df, start_date, end_date)
+    df = df.dropna(subset=["elo_diff", "net_h2h"])
+
+    predictions = predict_series_outcomes(df, model)
+    accuracy = test_series_winner_model(predictions)
+    print(f"Accuracy: {accuracy:.2%}")
+    simulate_bets(predictions, 1000)
+    simulate_bets_best(predictions, 1000)
+
+
+if __name__ == "__main__":
+    with open(CONFIG, "rb") as f:
+        cfg = tomllib.load(f)
+
+    init()
+    train_series_win_model(
+        cfg["modelling"]["vct_2023_start"],
+        cfg["modelling"]["vct_2024_start"],
+    )
+    test_series_winner(
+        cfg["modelling"]["vct_2024_start"],
+        cfg["modelling"]["vct_2024_end"],
+    )

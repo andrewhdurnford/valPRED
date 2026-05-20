@@ -1,58 +1,91 @@
+import sqlite3
+import sys
+from pathlib import Path
+
 import pandas as pd
-from IPython.display import display
 
-df = pd.read_csv('data/raw/tier1_series.csv')
-df.sort_values(by='date', ascending=True, inplace=True)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# Initialize Elo ratings
-elo_ratings = {}
-default_elo = 1500
-k_factor = 32
+from paths import DB
 
-# Function to get current Elo rating or initialize it
-def get_elo(team):
-    if team not in elo_ratings:
-        elo_ratings[team] = default_elo
-    return elo_ratings[team]
+_DEFAULT_ELO = 1500
+_K = 32
 
-# Function to calculate the expected probability
-def expected_prob(rating1, rating2):
-    return 1 / (1 + 10 ** ((rating2 - rating1) / 400))
 
-# Function to update Elo ratings
-def update_elo(winner_elo, loser_elo):
-    winner_prob = expected_prob(winner_elo, loser_elo)
-    loser_prob = expected_prob(loser_elo, winner_elo)
-    
-    new_winner_elo = winner_elo + k_factor * (1 - winner_prob)
-    new_loser_elo = loser_elo + k_factor * (0 - loser_prob)
-    
-    return new_winner_elo, new_loser_elo
+def _expected(r1, r2):
+    return 1 / (1 + 10 ** ((r2 - r1) / 400))
 
-# Add Elo columns to the dataframe
-df["t1_elo"] = 0
-df["t2_elo"] = 0
 
-# Calculate Elo ratings for each match
-for index, row in df.iterrows():
-    t1 = row["t1"]
-    t2 = row["t2"]
-    winner = row["winner"]
-    
-    t1_elo = get_elo(t1)
-    t2_elo = get_elo(t2)
-    
-    df.at[index, "t1_elo"] = t1_elo
-    df.at[index, "t2_elo"] = t2_elo
-    
-    if winner:
-        new_t1_elo, new_t2_elo = update_elo(t1_elo, t2_elo)
-    else:
-        new_t2_elo, new_t1_elo = update_elo(t2_elo, t1_elo)
-    
-    elo_ratings[t1] = new_t1_elo
-    elo_ratings[t2] = new_t2_elo
+def _update(winner_elo, loser_elo):
+    wp = _expected(winner_elo, loser_elo)
+    lp = _expected(loser_elo, winner_elo)
+    return winner_elo + _K * (1 - wp), loser_elo + _K * (0 - lp)
 
-df['elo_diff'] = df['t1_elo'] - df['t2_elo']
-display(df.tail(50))
-df.to_csv('data/tier1/series.csv')
+
+def _run_elo(df):
+    ratings = {}
+    t1_elos, t2_elos = [], []
+    for _, row in df.iterrows():
+        t1, t2 = row["t1"], row["t2"]
+        r1 = ratings.get(t1, _DEFAULT_ELO)
+        r2 = ratings.get(t2, _DEFAULT_ELO)
+        t1_elos.append(r1)
+        t2_elos.append(r2)
+        if row["winner"]:
+            ratings[t1], ratings[t2] = _update(r1, r2)
+        else:
+            ratings[t2], ratings[t1] = _update(r2, r1)
+    return t1_elos, t2_elos, ratings
+
+
+def compute_elo(con=None):
+    """Compute Elo ratings for all series and update t1_elo, t2_elo, elo_diff in the series table."""
+    close = con is None
+    if con is None:
+        con = sqlite3.connect(DB)
+
+    df = pd.read_sql(
+        "SELECT match_id, t1, t2, winner, date FROM series ORDER BY date ASC", con
+    )
+
+    t1_elos, t2_elos, _ = _run_elo(df)
+    df["t1_elo"] = t1_elos
+    df["t2_elo"] = t2_elos
+    df["elo_diff"] = df["t1_elo"] - df["t2_elo"]
+
+    cur = con.cursor()
+    for _, row in df.iterrows():
+        cur.execute(
+            "UPDATE series SET t1_elo=?, t2_elo=?, elo_diff=? WHERE match_id=?",
+            (row["t1_elo"], row["t2_elo"], row["elo_diff"], row["match_id"]),
+        )
+    con.commit()
+
+    if close:
+        con.close()
+
+    return df
+
+
+def get_current_ratings(con=None):
+    """Return {team_id: elo} representing each team's rating after their most recent match."""
+    close = con is None
+    if con is None:
+        con = sqlite3.connect(DB)
+
+    df = pd.read_sql(
+        "SELECT t1, t2, winner, date FROM series ORDER BY date ASC", con
+    )
+    _, _, ratings = _run_elo(df)
+
+    if close:
+        con.close()
+
+    return ratings
+
+
+if __name__ == "__main__":
+    compute_elo()
+    print("Elo ratings computed and saved to the series table.")
