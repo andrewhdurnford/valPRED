@@ -1,11 +1,31 @@
+import sqlite3
+import sys
+import tomllib
+from pathlib import Path
 import pandas as pd, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from link_scraper import fetch_data
 from stats_scraper import parse_h2h, parse_history
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from paths import CONFIG, DB
 
 site = 'https://www.vlr.gg'
-# teams = pd.read_csv('data/all/teams.csv', index_col=False)
+
+
+def load_config():
+    with open(CONFIG, "rb") as config_file:
+        return tomllib.load(config_file)
+
+
+def event_matches_url(event):
+    parts = event.strip("/").split("/")
+    event_id = parts[1]
+    slug = parts[2]
+    return f"{site}/event/matches/{event_id}/{slug}/?group=upcoming"
 
 def get_match_data(url):
     link = site + url
@@ -64,22 +84,20 @@ def get_matches(link, days):
             except Exception as exc:
                 print(f'An error occurred for match {match}: {exc}')
     cols = ['match_id', 't1', 't2', 'date', 'net_h2h', 't1_past', 't2_past', 't1_odds', 't2_odds']
-    # df = pd.DataFrame(data=match_data, columns=cols)
-    # df.to_csv('data/raw/upcoming.csv', index=False)
     return match_data
 
 def get_all_matches(days):
-    regions = [
-        'https://www.vlr.gg/event/matches/2005/champions-tour-2024-pacific-stage-2/?group=upcoming',
-        'https://www.vlr.gg/event/matches/2094/champions-tour-2024-emea-stage-2/?group=upcoming',
-        'https://www.vlr.gg/event/matches/2095/champions-tour-2024-americas-stage-2/?group=upcoming'
-    ]
+    cfg = load_config()
+    regions = [event_matches_url(event) for event in cfg["scraping"]["upcoming_events"]]
     cols = ['match_id', 't1', 't2', 'date', 'net_h2h', 't1_past', 't2_past', 't1_odds', 't2_odds']
     data = []
 
     for region in regions:
         data.extend(get_matches(region, days))
     df = pd.DataFrame(data=data, columns=cols)
-    df.to_csv('data/raw/upcoming.csv', index=False)
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB) as con:
+        df.drop_duplicates(subset="match_id", keep="first").to_sql("upcoming", con, if_exists="replace", index=False)
 
-get_all_matches(7)
+if __name__ == "__main__":
+    get_all_matches(7)

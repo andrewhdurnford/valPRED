@@ -1,6 +1,17 @@
-import pandas as pd, re, traceback, concurrent.futures, requests,  warnings
-from bs4 import BeautifulSoup, Tag
-from IPython.display import display
+import sqlite3
+import sys
+from pathlib import Path
+from datetime import datetime
+
+import pandas as pd, re, traceback, concurrent.futures, warnings
+from bs4 import Tag
+from link_scraper import fetch_data, max_workers
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from paths import DB, MATCH_LINKS, NEW_MATCH_LINKS
 
 team_dict = {}
 maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset', 'Abyss']
@@ -11,23 +22,44 @@ series_headers = ["match_id", "t1", "t2", "winner", "t1_ban1", "t1_ban2", "t2_ba
 site = "https://www.vlr.gg"
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Load match links
-with open("scraping/match_links.csv", "r") as f:
-    match_links = f.read().splitlines()
-match_links = list(set(match_links))
 
-with open("scraping/tier1_match_links.csv", "r") as f:
-    tier1_match_links = f.read().splitlines()
-tier1_match_links = list(set(tier1_match_links))
-new_match_links = None
-# with open("scraping/new_match_links.csv", "r") as f:
-#     new_match_links = f.read().splitlines()
+def log(message):
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
 
-with open("scraping/new_tier1_match_links.csv", "r") as f:
-    new_tier1_match_links = f.read().splitlines()
 
-with open("scraping/sample_links.csv", "r") as f:
-    sample_links = f.read().splitlines()
+def read_links(path):
+    if not path.exists():
+        log(f"Match-link file does not exist: {path}")
+        return []
+    with open(path, "r") as f:
+        links = list({line.strip() for line in f if line.strip()})
+    log(f"Read {len(links)} match links from {path}")
+    return links
+
+
+def write_scraped_table(df, table, key, replace=False):
+    log(f"Writing {len(df)} rows to table '{table}' in {DB} (replace={replace})")
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    df = df.drop_duplicates(subset=key, keep="first")
+    # Coerce pd.NA / NaN to None so sqlite3 bindings accept them
+    df = df.astype(object).where(pd.notnull(df), None)
+    cols = list(df.columns)
+    col_list = ", ".join(cols)
+    placeholders = ", ".join("?" for _ in cols)
+    # UPSERT so re-scraping a row doesn't clobber columns the scraper doesn't
+    # own (e.g. t1_elo/t2_elo/elo_diff on series, populated later by elo.py).
+    update_cols = [c for c in cols if c != key]
+    set_clause = ", ".join(f"{c}=excluded.{c}" for c in update_cols)
+    sql = (
+        f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
+        f"ON CONFLICT ({key}) DO UPDATE SET {set_clause}"
+    )
+    rows = list(df.itertuples(index=False, name=None))
+    with sqlite3.connect(DB) as con:
+        if replace:
+            con.execute(f"DELETE FROM {table}")
+        con.executemany(sql, rows)
+        con.commit()
 
 def isnum(s):
     try:
@@ -214,7 +246,7 @@ def parse_map(map, t1, t2):
             stats = pd.concat([gen_stats, t1_stats, t2_stats])   
             return stats
     except Exception as e:
-        print(f"Error parsing map: {str(e)}")
+        log(f"Error parsing map: {str(e)}")
         traceback.print_exc()
         return None
 
@@ -248,12 +280,15 @@ def parse_history(history):
             net -= int(loss.text)
         return net
 
-def process_match_link(link, links):
-    print(f"Processing match {links.index(link) + 1} out of {len(links)} ({round(links.index(link)/len(links)* 100, 2) }%)")
+def process_match_link(index, link, total):
+    log(f"Starting match {index}/{total}: {link}")
     match_id = re.search(r"/(\d+)/", link).group(1)
     match_link = site + link
     try:
         soup = fetch_data(match_link)
+        if soup is None:
+            log(f"No response for match {match_id}: {link}")
+            return None
         date = soup.find("div", {"class": "moment-tz-convert"}).get("data-utc-ts").split()[0]
         t1 = get_team(soup.find("a", {"class": "match-header-link wf-link-hover mod-1"}).get("href"))
         t2 = get_team(soup.find("a", {"class": "match-header-link wf-link-hover mod-2"}).get("href"))
@@ -303,52 +338,63 @@ def process_match_link(link, links):
         return match_stats, map_stats
     
     except Exception as e:
-        print(f"Error processing match {match_id}: {str(e)}")
+        log(f"Error processing match {match_id}: {str(e)}")
         traceback.print_exc()
         return None
 
-def fetch_data(url):
-    response = requests.get(url)
-    return BeautifulSoup(response.text, "html.parser")
-
-def process_matches(links, tier1):
+def process_matches(links, replace=False):
     global series_df, maps_df
 
     match_stats_list = []
     map_stats_list = []
+    total_links = len(links)
+    log(f"Processing {total_links} match links (replace={replace})")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(process_match_link, link, links) for link in links]
+    if not links:
+        log("No match links to process.")
+        return True
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(process_match_link, index, link, len(links))
+            for index, link in enumerate(links, start=1)
+        ]
+        completed = 0
         for future in concurrent.futures.as_completed(futures):
-            result = future.result()
+            try:
+                result = future.result()
+            except Exception as exc:
+                log(f"Match worker generated an exception: {exc}")
+                traceback.print_exc()
+                result = None
+            completed += 1
             if not result is None:
                 match_stats, map_stats = result
                 if match_stats is not None:
                     match_stats_list.append(match_stats)
                 map_stats_list.extend(map_stats)
+            if completed == 1 or completed % 10 == 0 or completed == total_links:
+                log(
+                    "Match processing progress: "
+                    f"{completed}/{total_links}; "
+                    f"series rows: {len(match_stats_list)}; "
+                    f"map rows: {len(map_stats_list)}"
+                )
 
-    series_df = pd.concat(match_stats_list, axis=1).T
-    maps_df = pd.concat(map_stats_list, axis=1).T
+    if not match_stats_list and not map_stats_list:
+        log("No match data found.")
+        return False
 
-    # Save processed data
-    if tier1:
-        series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/raw/tier1_series.csv', index=False)
-        maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/raw/tier1_maps.csv', index=False)
-    else:
-        series_df.drop_duplicates(subset='match_id', keep='first').to_csv('data/raw/series.csv', index=False)
-        maps_df.drop_duplicates(subset='map_id', keep='first').to_csv('data/raw/maps.csv', index=False)
-
-# Remove cn matches (limited data)
-# def sanitize_tier1():
-#     cn = pd.read_csv('data/tier1/teams/cn.csv').iloc[:,0].tolist()
-#     maps = pd.read_csv('data/raw/tier1_maps.csv', index_col=False)
-#     maps = maps.loc[~(maps['t1'].isin(cn) | maps['t2'].isin(cn))]
-#     maps.to_csv('data/tier1/maps.csv', index=False)
-#     series = pd.read_csv('data/raw/tier1_series.csv', index_col=False)
-#     series = series.loc[~(series['t1'].isin(cn) | series['t2'].isin(cn))]
-#     series.to_csv('data/tier1/series.csv', index=False)
+    if match_stats_list:
+        series_df = pd.concat(match_stats_list, axis=1).T
+        write_scraped_table(series_df, "series", "match_id", replace=replace)
+    if map_stats_list:
+        maps_df = pd.concat(map_stats_list, axis=1).T
+        write_scraped_table(maps_df, "maps", "map_id", replace=replace)
+    return True
 
 def append_match_links(new_links_file, match_links_file):
+    log(f"Appending new match links from {new_links_file} into {match_links_file}")
     # Open the new match links file and read its content
     with open(new_links_file, 'r') as new_links:
         new_content = new_links.readlines()
@@ -359,23 +405,26 @@ def append_match_links(new_links_file, match_links_file):
     
     # Clear the new match links file
     open(new_links_file, 'w').close()
+    log(f"Appended {len(new_content)} match links and cleared {new_links_file}")
 
 
 def process_all():
-    process_matches(match_links, False)
+    log("Starting full match processing")
+    process_matches(read_links(MATCH_LINKS), replace=True)
 
 def process_tier1():
-    process_matches(tier1_match_links, True)
+    log("Starting full tier 1 match processing")
+    process_matches(read_links(MATCH_LINKS), replace=True)
 
 def update_all():
-    global series_df, maps_df
-    series_df = pd.read_csv('data/series.csv', index_col=False)
-    maps_df = pd.read_csv('data/maps.csv', index_col=False)
-    process_matches(new_match_links, True)
+    log("Starting incremental all-event match processing")
+    process_matches(read_links(NEW_MATCH_LINKS), replace=False)
 
 def update_tier1():
-    global series_df, maps_df
-    series_df = pd.read_csv('data/tier1/series.csv', index_col=False)
-    maps_df = pd.read_csv('data/tier1/maps.csv', index_col=False)
-    process_matches(new_tier1_match_links, True)
-    append_match_links('scraping/new_tier1_match_links', 'scraping/tier1_match_links') 
+    log("Starting incremental tier 1 match processing")
+    links = read_links(NEW_MATCH_LINKS)
+    scraped = process_matches(links, replace=False)
+    if scraped:
+        append_match_links(NEW_MATCH_LINKS, MATCH_LINKS)
+    else:
+        log("Leaving new match links in place because no match data was scraped.")

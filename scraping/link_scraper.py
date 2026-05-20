@@ -1,120 +1,151 @@
-import requests, traceback, csv, pandas as pd
+import csv
+import sqlite3
+import sys
+import time
+import tomllib
+import traceback
+from pathlib import Path
 from bs4 import BeautifulSoup, Tag
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Site url
-site = "https://www.vlr.gg"
+import requests
 
-# Tier 1 events
-amer = "/event/2004/champions-tour-2024-americas-stage-1/regular-season"
-emea = "/event/1998/champions-tour-2024-emea-stage-1/regular-season"
-apac = "/event/2002/champions-tour-2024-pacific-stage-1/regular-season"
-cn = "/event/2006/champions-tour-2024-china-stage-1/regular-season"
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-# Other events
-na_s1_rs = "/event/1971/challengers-league-2024-north-america-stage-1/regular-season"
-na_s1 = "/event/1971/challengers-league-2024-north-america-stage-1"
-br_s1_rs = "/event/1949/gamers-club-challengers-league-2024-brazil-split-1/regular-season"
-br_s1_oq1 = "/event/1949/gamers-club-challengers-league-2024-brazil-split-1/open-qualifier-1"
-br_s1_oq2 = "/event/1949/gamers-club-challengers-league-2024-brazil-split-1/open-qualifier-2"
-ne_pol_rs = "/event/1943/challengers-league-2024-northern-europe-polaris-split-1/regular-season"
-ne_pol_oq = "/event/1943/challengers-league-2024-northern-europe-polaris-split-1/open-qualifier"
-fr_rev = "/event/1942/challengers-league-2024-france-revolution-split-1/regular-season"
-dach_ev_rs = "/event/1948/challengers-league-2024-dach-evolution-split-1/regular-season"
-dach_ev_oq = "/event/1948/challengers-league-2024-dach-evolution-split-1/open-qualifier"
-east_surge = "/event/1932/challengers-league-2024-east-surge-split-1/regular-season"
-east_surge_oq = "/event/1932/challengers-league-2024-east-surge-split-1/open-qualifier"
-pt_temp_rs = "/event/1945/challengers-league-2024-portugal-tempest-split-1/regular-season"
-jp_s1 = "/event/1962/challengers-league-2024-japan-split-1"
-kr_s1 = "/event/1958/wdg-challengers-league-2024-korea-split-1/main-stage"
-kr_split2 = "/event/2055/wdg-challengers-league-2024-korea-split-2"
-wcg_kr = "/event/1447/world-cyber-games-challengers-league-korea-split-1/regular-league"
-vn_swiss = "/event/1974/challengers-league-2024-vietnam-split-1/swiss-stage"
-tw_hk_main = "/event/1955/challengers-league-2024-taiwan-hong-kong-split-1/main-event"
-sa_s1_rs = "/event/1966/omen-challengers-league-2024-south-asia-split-1/cup-2-regular-season"
-sa_s1_oq = "/event/1966/omen-challengers-league-2024-south-asia-split-1/open-qualifier"
-oce_s1_gs = "/event/1986/challengers-league-oceania-stage-1/group-stage"
-oce_s1_oq = "/event/1986/challengers-league-oceania-stage-1/open-qualifier"
-es_s1_rs = "/event/1939/challengers-league-2024-spain-rising-split-1/regular-season"
-gc_champ = "/event/1750/game-changers-2023-championship-s-o-paulo"
-tr_s1_rs = "/event/1893/challengers-league-2024-t-rkiye-birlik-split-1/regular-season"
-mena_s1_lana = "/event/1944/challengers-league-2024-mena-resilience-split-1/levant-and-north-africa"
-mena_s1_gai = "/event/1944/challengers-league-2024-mena-resilience-split-1/gcc-and-iraq"
-it_s1_rs = "/event/1947/challengers-league-2024-italy-rinascimento-split-1/regular-season"
-latamn_s1_rs = "/event/1898/challengers-league-2024-latam-north-ace-split-1/regular-phase"
-latams_s1_rs = "/event/1950/challengers-league-2024-latam-south-ace-split-1/regular-phase"
-ph_s1_gs = "/event/1964/challengers-league-2024-philippines-split-1/group-stage"
-th_s1_gs = "/event/1960/afreecatv-challengers-league-2024-thailand-split-1/group-stage"
-ms_s1_gs = "/event/1956/challengers-league-2024-malaysia-singapore-split-1/group-stage"
-id_s1 = "/event/1952/challengers-league-2024-indonesia-split-1/main-event"
+from paths import CONFIG, DB, MATCH_LINKS, NEW_MATCH_LINKS
 
-tier1_events = [amer, emea, apac, cn]
-all_events = [
-    amer, emea, apac, cn,
-    na_s1_rs, na_s1, br_s1_rs, br_s1_oq1, br_s1_oq2,
-    ne_pol_rs, ne_pol_oq, fr_rev, dach_ev_rs, dach_ev_oq,
-    east_surge, east_surge_oq, pt_temp_rs, jp_s1, kr_s1, kr_split2, wcg_kr,
-    vn_swiss, tw_hk_main, sa_s1_rs, sa_s1_oq, oce_s1_gs, oce_s1_oq,
-    es_s1_rs, gc_champ, tr_s1_rs, mena_s1_lana, mena_s1_gai, it_s1_rs,
-    latamn_s1_rs, latams_s1_rs, ph_s1_gs, th_s1_gs, ms_s1_gs, id_s1
-]
 
-# Dictionary of events
-events_dict = {
-    "amer": amer,
-    "emea": emea,
-    "apac": apac,
-    "cn": cn,
-    "na_s1_rs": na_s1_rs,
-    "na_s1": na_s1,
-    "br_s1_rs": br_s1_rs,
-    "br_s1_oq1": br_s1_oq1,
-    "br_s1_oq2": br_s1_oq2,
-    "ne_pol_rs": ne_pol_rs,
-    "ne_pol_oq": ne_pol_oq,
-    "fr_rev": fr_rev,
-    "dach_ev_rs": dach_ev_rs,
-    "dach_ev_oq": dach_ev_oq,
-    "east_surge": east_surge,
-    "east_surge_oq": east_surge_oq,
-    "pt_temp_rs": pt_temp_rs,
-    "jp_s1": jp_s1,
-    "kr_s1": kr_s1,
-    "kr_split2": kr_split2,
-    "wcg_kr": wcg_kr,
-    "vn_swiss": vn_swiss,
-    "tw_hk_main": tw_hk_main,
-    "sa_s1_rs": sa_s1_rs,
-    "sa_s1_oq": sa_s1_oq,
-    "oce_s1_gs": oce_s1_gs,
-    "oce_s1_oq": oce_s1_oq,
-    "es_s1_rs": es_s1_rs,
-    "gc_champ": gc_champ,
-    "tr_s1_rs": tr_s1_rs,
-    "mena_s1_lana": mena_s1_lana,
-    "mena_s1_gai": mena_s1_gai,
-    "it_s1_rs": it_s1_rs,
-    "latamn_s1_rs": latamn_s1_rs,
-    "latams_s1_rs": latams_s1_rs,
-    "ph_s1_gs": ph_s1_gs,
-    "th_s1_gs": th_s1_gs,
-    "ms_s1_gs": ms_s1_gs,
-    "id_s1": id_s1
-}
+def load_config():
+    with open(CONFIG, "rb") as config_file:
+        return tomllib.load(config_file)
+
+
+def normalize_scrape_date(date):
+    return date.replace("-", "/")
+
+
+def region_from_event(event):
+    slug = event.strip("/").split("/")[2] if len(event.strip("/").split("/")) > 2 else event
+    if "americas" in slug:
+        return "amer"
+    if "emea" in slug:
+        return "emea"
+    if "pacific" in slug:
+        return "apac"
+    if "china" in slug:
+        return "cn"
+    return "global"
+
+
+cfg = load_config()
+site = cfg["scraping"]["site"]
+tier1_events = cfg["scraping"]["tier1_events"]
+all_events = cfg["scraping"].get("all_events", tier1_events)
 team_cols = ['id', 'linkname', 'fullname', 'abbrev', 'secondary_id']
+request_attempts = cfg["scraping"].get("request_attempts", 2)
+connect_timeout = cfg["scraping"].get("connect_timeout_seconds", 5)
+read_timeout = cfg["scraping"].get("read_timeout_seconds", 30)
+max_workers = cfg["scraping"].get("max_workers", 4)
+event_workers = cfg["scraping"].get("event_workers", 2)
+request_headers = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def log(message):
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
+
 
 # Get soup from url
 def fetch_data(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        return BeautifulSoup(response.content, 'html.parser')
-    except requests.RequestException as e:
-        print(f"Request failed: {e}")
-        return None
+    for attempt in range(1, request_attempts + 1):
+        try:
+            time.sleep(0.2)
+            response = requests.get(
+                url,
+                headers=request_headers,
+                timeout=(connect_timeout, read_timeout),
+            )
+            response.raise_for_status()
+            return BeautifulSoup(response.content, 'html.parser')
+        except requests.RequestException as e:
+            if attempt == request_attempts:
+                log(f"Request failed for {url}: {e}")
+                return None
+            log(f"Request attempt {attempt}/{request_attempts} failed for {url}: {e}")
+            time.sleep(2 ** (attempt - 1))
+
+
+def write_team_rows(rows):
+    log(f"Writing {len(rows)} team rows to {DB}")
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB) as con:
+        con.executemany(
+            """
+            INSERT OR REPLACE INTO teams
+            (id, linkname, fullname, abbrev, secondary_id, region)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def read_latest_series_date():
+    with sqlite3.connect(DB) as con:
+        try:
+            max_date = con.execute("SELECT MAX(date) FROM series").fetchone()[0]
+        except sqlite3.OperationalError:
+            return None
+    return max_date
+
+
+def read_team_links_from_db(regions=None):
+    where = ""
+    params = []
+    if regions:
+        placeholders = ", ".join("?" for _ in regions)
+        where = f"WHERE region IN ({placeholders})"
+        params = list(regions)
+
+    with sqlite3.connect(DB) as con:
+        try:
+            rows = con.execute(
+                f"""
+                SELECT id, linkname
+                FROM teams
+                {where}
+                ORDER BY id
+                """,
+                params,
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+
+    links = [f"/{team_id}/{linkname}" for team_id, linkname in rows if team_id and linkname]
+    log(f"Read {len(links)} team links from {DB}")
+    return links
+
+
+def write_links(path, links):
+    unique_links = sorted(set(links))
+    log(f"Writing {len(unique_links)} match links to {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="") as file:
+        writer = csv.writer(file)
+        for link in unique_links:
+            writer.writerow([link])
 
 def get_team_links(event):
+    log(f"Fetching event teams: {event}")
     soup = fetch_data(site + event)
     team_links = []
     if soup:
@@ -123,15 +154,16 @@ def get_team_links(event):
             for team in teams.find_all("a", {"class": "event-team-name"}):
                 href = team.get("href")
                 team_links.append(href[5:]) 
+    log(f"Found {len(team_links)} teams for event: {event}")
     return team_links
 
 def fetch_match_links(team_url_suffix, start_date):
-    def fetch_links(team_url_suffix, start_date, page):
+    def parse_match_page(soup, start_date):
         match_links = []
-        full_url = site + "/team/matches" + team_url_suffix + f"/?page={page}"
-        soup = fetch_data(full_url)
+        reached_start = False
         if soup:
-            matchlist = soup.find("div", {"class": "col mod-1"}).find("div", {"class": "mod-dark"})
+            col = soup.find("div", {"class": "col mod-1"})
+            matchlist = col.find("div", {"class": "mod-dark"}) if col else None
             if matchlist:
                 for div in matchlist.children:
                     if isinstance(div, Tag):
@@ -141,48 +173,83 @@ def fetch_match_links(team_url_suffix, start_date):
                             date = datetime.strptime(date_text, "%Y/%m/%d")
                             start = datetime.strptime(start_date, "%Y/%m/%d")
                             if date < start:
+                                reached_start = True
                                 break
                             link = a_tag.get("href")
                             match_links.append(link)
-        return match_links
+        return match_links, reached_start
 
     match_links = []
     full_url = site + "/team/matches" + team_url_suffix
     soup = fetch_data(full_url)
-    pages = len(soup.find("div", {"class": "action-container-pages"}).contents)
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        futures = [executor.submit(fetch_links, team_url_suffix, start_date, i + 1) for i in range(pages)]
-        for future in as_completed(futures):
-            match_links.extend(future.result())
+    if soup is None:
+        log(f"No match page response for team: {team_url_suffix}")
+        return match_links
+    page_container = soup.find("div", {"class": "action-container-pages"})
+    pages = len(page_container.contents) if page_container else 1
+    log(f"Fetching {pages} match pages for team: {team_url_suffix}")
+
+    page_links, reached_start = parse_match_page(soup, start_date)
+    match_links.extend(page_links)
+    if reached_start:
+        log(f"Reached start date on first page for team: {team_url_suffix}")
+        return match_links
+
+    for page in range(2, pages + 1):
+        page_url = site + "/team/matches" + team_url_suffix + f"/?page={page}"
+        page_soup = fetch_data(page_url)
+        page_links, reached_start = parse_match_page(page_soup, start_date)
+        match_links.extend(page_links)
+        if reached_start:
+            break
+    log(f"Found {len(match_links)} recent match links for team: {team_url_suffix}")
     return match_links
 
-def scrape_all_games(start_date, events):
-    global team_links, match_links
-    team_links = []
+def scrape_team_match_links(start_date, team_links):
+    global match_links
     match_links = []
-    # Fetch team links using multithreading
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        future_to_region = {executor.submit(get_team_links, url): url for url in events}
-        for future in as_completed(future_to_region):
-            region = future_to_region[future]
-            try:
-                team_links.extend(future.result())
-            except Exception as exc:
-                print(f'{region} generated an exception: {exc}')
-                traceback.print_exc()
-
-    # Fetch match links using multithreading
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    team_links = list(set(team_links))
+    log(f"Scraping match links for {len(team_links)} teams since {start_date}")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_team = {executor.submit(fetch_match_links, url, start_date): url for url in team_links}
+        total_teams = len(future_to_team)
+        completed = 0
         for future in as_completed(future_to_team):
             team = future_to_team[future]
             try:
                 match_links.extend(future.result())
             except Exception as exc:
-                print(f'{team} generated an exception: {exc}')
+                log(f'{team} generated an exception: {exc}')
                 traceback.print_exc()
+            completed += 1
+            if completed == 1 or completed % 10 == 0 or completed == total_teams:
+                log(f"Team match-link fetch progress: {completed}/{total_teams}; links so far: {len(set(match_links))}")
 
-    return list(set(match_links))
+    unique_match_links = list(set(match_links))
+    log(f"Finished match-link scrape: {len(unique_match_links)} unique links")
+    return unique_match_links
+
+
+def scrape_all_games(start_date, events):
+    team_links = []
+    log(f"Scraping match links from {len(events)} events since {start_date}")
+    # Fetch team links using multithreading
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_region = {executor.submit(get_team_links, url): url for url in events}
+        total_events = len(future_to_region)
+        completed = 0
+        for future in as_completed(future_to_region):
+            region = future_to_region[future]
+            try:
+                team_links.extend(future.result())
+            except Exception as exc:
+                log(f'{region} generated an exception: {exc}')
+                traceback.print_exc()
+            completed += 1
+            log(f"Event team fetch progress: {completed}/{total_events}")
+
+    log(f"Collected {len(set(team_links))} unique team links")
+    return scrape_team_match_links(start_date, team_links)
 
 def get_event_teams(event):
     # Function to retrieve teamnames with all varations
@@ -190,95 +257,125 @@ def get_event_teams(event):
         parts = link.split('/')
         team = [int(parts[1]), parts[2]]
         soup = fetch_data(f"https://www.vlr.gg/team{link}")
+        if soup is None:
+            return team
         names = soup.select('[class*="wf-title"]') 
         for n in names:
             team.append(n.text)
         return team
 
+    log(f"Refreshing team metadata for event: {event}")
     teamlinks = get_team_links(event)
     teams = []
 
     # Get all teamname variations
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_team = {executor.submit(get_all_teamnames, link): link for link in teamlinks}
+        total_teams = len(future_to_team)
+        completed = 0
         for future in as_completed(future_to_team):
             team = future_to_team[future]
             try:
                 teams.append(future.result())
             except Exception as exc:
-                print(f'{team} generated an exception: {exc}')
+                log(f'{team} generated an exception: {exc}')
                 traceback.print_exc()
+            completed += 1
+            if completed == 1 or completed % 10 == 0 or completed == total_teams:
+                log(f"Team metadata progress for {event}: {completed}/{total_teams}")
     
+    log(f"Finished team metadata for event: {event}; teams: {len(teams)}")
     return teams
 
 def get_all_teams():
-    teams = []
-    for event in all_events:
-        teams.extend(get_event_teams(event))
-
-    # Save to csv
-    with open(f'data/all/teams.csv', 'w') as csv_file:  
-        writer = csv.writer(csv_file)
-        writer.writerow(team_cols)
-        for t in teams:
-            writer.writerow(t)
+    rows = []
+    log(f"Refreshing all team metadata across {len(all_events)} events")
+    with ThreadPoolExecutor(max_workers=event_workers) as executor:
+        future_to_event = {executor.submit(get_event_teams, event): event for event in all_events}
+        completed = 0
+        for future in as_completed(future_to_event):
+            event = future_to_event[future]
+            region = region_from_event(event)
+            try:
+                teams = future.result()
+            except Exception as exc:
+                log(f'{event} generated an exception: {exc}')
+                traceback.print_exc()
+                teams = []
+            for team in teams:
+                row = list(team[:len(team_cols)])
+                row.extend([None] * (len(team_cols) - len(row)))
+                rows.append(row + [region])
+            completed += 1
+            log(f"All-team metadata event progress: {completed}/{len(all_events)}")
+    write_team_rows(rows)
 
 def get_tier1_teams():
+    log(f"Refreshing tier 1 team metadata across {len(tier1_events)} events")
     for event in tier1_events:
         teams = get_event_teams(event)
-
-        # Find event name
-        filename = list(events_dict.keys())[list(events_dict.values()).index(event)]
-
-        # Save to csv
-        with open(f'data/tier1/teams/{filename}.csv', 'w') as csv_file:  
-            writer = csv.writer(csv_file)
-            writer.writerow(team_cols)
-            for t in teams:
-                writer.writerow(t)
+        region = region_from_event(event)
+        rows = []
+        for team in teams:
+            row = list(team[:len(team_cols)])
+            row.extend([None] * (len(team_cols) - len(row)))
+            rows.append(row + [region])
+        write_team_rows(rows)
 
 def get_all_tier1_teams():
-    teams = []
-    for event in tier1_events:
-        teams.extend(get_event_teams(event))
-
-        # Save to csv
-        with open(f'data/tier1/teams.csv', 'w') as csv_file:  
-            writer = csv.writer(csv_file)
-            writer.writerow(team_cols)
-            for t in teams:
-                writer.writerow(t)
+    rows = []
+    log(f"Refreshing tier 1 team metadata across {len(tier1_events)} events")
+    with ThreadPoolExecutor(max_workers=event_workers) as executor:
+        future_to_event = {executor.submit(get_event_teams, event): event for event in tier1_events}
+        completed = 0
+        for future in as_completed(future_to_event):
+            event = future_to_event[future]
+            region = region_from_event(event)
+            try:
+                teams = future.result()
+            except Exception as exc:
+                log(f'{event} generated an exception: {exc}')
+                traceback.print_exc()
+                teams = []
+            for team in teams:
+                row = list(team[:len(team_cols)])
+                row.extend([None] * (len(team_cols) - len(row)))
+                rows.append(row + [region])
+            completed += 1
+            log(f"Tier 1 metadata event progress: {completed}/{len(tier1_events)}")
+    write_team_rows(rows)
 
 def get_all_matchlinks():
-    links = scrape_all_games('2021/03/30', all_events)
-    with open("scraping/match_links.csv", "w", newline="") as file:
-        writer = csv.writer(file)
-        for link in links:
-            writer.writerow([link])
+    log("Building full all-event match-link file")
+    links = scrape_all_games(normalize_scrape_date(cfg["scraping"]["start_date"]), all_events)
+    write_links(ROOT / "scraping" / "match_links.csv", links)
 
 def update_all_matchlinks():
-    series = pd.read_csv('data/raw/series.csv', index_col=False)
-    date = (datetime.strptime(series['date'].max(), "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
+    latest_date = read_latest_series_date()
+    if latest_date is None:
+        date = normalize_scrape_date(cfg["scraping"]["start_date"])
+    else:
+        date = (datetime.strptime(latest_date, "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
+    log(f"Updating all-event match links using start date {date}")
     links = scrape_all_games(date, all_events)
-
-    with open("scraping/new_match_links.csv", "w", newline="") as file:
-        writer = csv.writer(file)
-        for link in links:
-            writer.writerow([link])
+    write_links(ROOT / "scraping" / "new_match_links.csv", links)
 
 def get_tier1_matchlinks():
-    links = scrape_all_games('2021/03/30', tier1_events)
-    with open("scraping/tier1_match_links.csv", "w", newline="") as file:
-        writer = csv.writer(file)
-        for link in links:
-            writer.writerow([link])
+    log("Building full tier 1 match-link file")
+    links = scrape_all_games(normalize_scrape_date(cfg["scraping"]["start_date"]), tier1_events)
+    write_links(MATCH_LINKS, links)
 
 def update_tier1_matchlinks():
-    series = pd.read_csv('data/raw/tier1_series.csv', index_col=False)
-    date = (datetime.strptime(series['date'].max(), "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
-    links = scrape_all_games(date, tier1_events)
-
-    with open("scraping/new_tier1_match_links.csv", "w", newline="") as file:
-        writer = csv.writer(file)
-        for link in links:
-            writer.writerow([link])
+    latest_date = read_latest_series_date()
+    if latest_date is None:
+        date = normalize_scrape_date(cfg["scraping"]["start_date"])
+    else:
+        date = (datetime.strptime(latest_date, "%Y-%m-%d") - timedelta(1)).strftime("%Y/%m/%d")
+    log(f"Updating tier 1 match links using start date {date}")
+    team_links = read_team_links_from_db(["amer", "emea", "apac", "cn", "global"])
+    if team_links:
+        links = scrape_team_match_links(date, team_links)
+    else:
+        log("No team links found in DB; falling back to event pages")
+        links = scrape_all_games(date, tier1_events)
+    write_links(NEW_MATCH_LINKS, links)
