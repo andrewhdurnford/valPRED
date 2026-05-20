@@ -49,3 +49,6 @@ vct_2022_start = "2022-03-30"
 vct_2023_start = "2023-02-13"
 vct_2024_start = "2024-02-16"
 vct_2024_end   = "2024-08-25"
+
+[betting]
+house_vig = 0.07

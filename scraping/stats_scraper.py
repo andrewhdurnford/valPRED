@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from paths import DB, MATCH_LINKS, NEW_MATCH_LINKS
+from market import vig_opposite_probability
 
 team_dict = {}
 maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset', 'Abyss']
@@ -307,7 +308,9 @@ def process_match_link(index, link, total):
                 val = float(odd.text[1:])
                 val = 1/(val/100) if val > 0 else 0
                 if not winner:
-                    val = 1 - val
+                    val = vig_opposite_probability(val)
+                    if val is None:
+                        continue
                 if val > best_odds and val != 1:
                     best_odds = val
                 if val < worst_odds and val != 0:

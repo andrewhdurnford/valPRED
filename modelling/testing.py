@@ -1,4 +1,20 @@
+import sys
+from pathlib import Path
+
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from market import vig_opposite_probability
+
+
+MIN_MARKET_PROBABILITY = 0.1
+
+
+def _valid_market_probability(probability):
+    return probability is not None and pd.notna(probability) and 0 < probability < 1
 
 
 def predict_series_outcomes(sds, series_winner_model):
@@ -21,31 +37,34 @@ def simulate_bets(predictions, bankroll):
     cols = ["match_id", "t1", "t2", "correct", "date", "bankroll", "betsize", "$win", "$lose", "best", "worst"]
     data = []
     for _, row in predictions.iterrows():
-        if row["pred_win%"] > row["odds"] and row["odds"] > 0.1:
-            bets += 1
-            if row["odds"] < 0.5:
-                dog += 1
-            if row["winner"]:
-                bankroll += (betsize * 1 / row["odds"]) - betsize
-                won += 1
-                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / row["odds"]) - betsize, betsize, row["odds"], row["odds"]])
-            else:
-                bankroll -= betsize
-                lost += 1
-                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / row["odds"]) - betsize, betsize, row["odds"], row["odds"]])
+        t1_odds = row["odds"]
+        t2_odds = vig_opposite_probability(t1_odds)
 
-        elif row["pred_win%"] < row["odds"] and row["odds"] < 0.9:
+        if _valid_market_probability(t1_odds) and row["pred_win%"] > t1_odds and t1_odds > MIN_MARKET_PROBABILITY:
             bets += 1
-            if row["odds"] > 0.5:
+            if t1_odds < 0.5:
+                dog += 1
+            if row["winner"]:
+                bankroll += (betsize * 1 / t1_odds) - betsize
+                won += 1
+                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / t1_odds) - betsize, betsize, t1_odds, t2_odds])
+            else:
+                bankroll -= betsize
+                lost += 1
+                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / t1_odds) - betsize, betsize, t1_odds, t2_odds])
+
+        elif _valid_market_probability(t2_odds) and (1 - row["pred_win%"]) > t2_odds and t2_odds > MIN_MARKET_PROBABILITY:
+            bets += 1
+            if t2_odds < 0.5:
                 dog += 1
             if row["winner"]:
                 bankroll -= betsize
                 lost += 1
-                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / (1 - row["odds"])) - betsize, betsize, row["odds"], row["odds"]])
+                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / t2_odds) - betsize, betsize, t1_odds, t2_odds])
             else:
-                bankroll += (betsize * 1 / (1 - row["odds"])) - betsize
+                bankroll += (betsize * 1 / t2_odds) - betsize
                 won += 1
-                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / (1 - row["odds"])) - betsize, betsize, row["odds"], row["odds"]])
+                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / t2_odds) - betsize, betsize, t1_odds, t2_odds])
 
     accuracy = round(won / (won + lost) * 100, 2) if (won + lost) > 0 else 0
     expected_value = round((bankroll - start) / bets / betsize, 2) if bets > 0 else 0
@@ -68,31 +87,34 @@ def simulate_bets_best(predictions, bankroll):
     predictions = predictions.sort_values(by="date", ascending=True)
     data = []
     for _, row in predictions.iterrows():
-        if row["pred_win%"] > row["worst_odds"] and row["worst_odds"] > 0.1:
-            bets += 1
-            if row["worst_odds"] < 0.5:
-                dog += 1
-            if row["winner"]:
-                bankroll += (betsize * 1 / row["worst_odds"]) - betsize
-                won += 1
-                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / row["worst_odds"]) - betsize, betsize, row["best_odds"], row["worst_odds"]])
-            else:
-                bankroll -= betsize
-                lost += 1
-                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / row["worst_odds"]) - betsize, betsize, row["best_odds"], row["worst_odds"]])
+        t1_odds = row["worst_odds"]
+        t2_odds = vig_opposite_probability(row["best_odds"])
 
-        elif row["pred_win%"] < row["best_odds"] and row["best_odds"] < 0.9:
+        if _valid_market_probability(t1_odds) and row["pred_win%"] > t1_odds and t1_odds > MIN_MARKET_PROBABILITY:
             bets += 1
-            if row["best_odds"] > 0.5:
+            if t1_odds < 0.5:
+                dog += 1
+            if row["winner"]:
+                bankroll += (betsize * 1 / t1_odds) - betsize
+                won += 1
+                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / t1_odds) - betsize, betsize, row["best_odds"], row["worst_odds"]])
+            else:
+                bankroll -= betsize
+                lost += 1
+                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / t1_odds) - betsize, betsize, row["best_odds"], row["worst_odds"]])
+
+        elif _valid_market_probability(t2_odds) and (1 - row["pred_win%"]) > t2_odds and t2_odds > MIN_MARKET_PROBABILITY:
+            bets += 1
+            if t2_odds < 0.5:
                 dog += 1
             if row["winner"]:
                 bankroll -= betsize
                 lost += 1
-                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / (1 - row["best_odds"])) - betsize, betsize, row["best_odds"], row["worst_odds"]])
+                data.append([row["match_id"], row["t1"], row["t2"], False, row["date"], bankroll, betsize, (betsize * 1 / t2_odds) - betsize, betsize, row["best_odds"], row["worst_odds"]])
             else:
-                bankroll += (betsize * 1 / (1 - row["best_odds"])) - betsize
+                bankroll += (betsize * 1 / t2_odds) - betsize
                 won += 1
-                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / (1 - row["best_odds"])) - betsize, betsize, row["best_odds"], row["worst_odds"]])
+                data.append([row["match_id"], row["t1"], row["t2"], True, row["date"], bankroll, betsize, (betsize * 1 / t2_odds) - betsize, betsize, row["best_odds"], row["worst_odds"]])
 
     accuracy = round(won / (won + lost) * 100, 2) if (won + lost) > 0 else 0
     expected_value = round((bankroll - start) / bets / betsize, 2) if bets > 0 else 0
