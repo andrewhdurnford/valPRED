@@ -1,6 +1,13 @@
 [scraping]
 site = "https://www.vlr.gg"
 start_date = "2022/03/30"
+request_attempts = 4
+connect_timeout_seconds = 10
+read_timeout_seconds = 30
+request_delay_seconds = 0.5
+request_backoff_seconds = 3
+max_workers = 4
+event_workers = 1
 
 # Events to include in training data — update each season
 tier1_events = [
@@ -8,33 +15,14 @@ tier1_events = [
     "/event/2004/champions-tour-2024-americas-stage-1/regular-season",
     "/event/1998/champions-tour-2024-emea-stage-1/regular-season",
     "/event/2002/champions-tour-2024-pacific-stage-1/regular-season",
-    "/event/2006/champions-tour-2024-china-stage-1/regular-season",
-    "/event/2095/champions-tour-2024-americas-stage-2/regular-season",
-    "/event/2094/champions-tour-2024-emea-stage-2/regular-season",
-    "/event/2005/champions-tour-2024-pacific-stage-2/regular-season",
-    "/event/1999/champions-tour-2024-masters-shanghai/swiss-stage",
-    "/event/2097/valorant-champions-2024/group-stage",
     # 2025
     "/event/2274/vct-2025-americas-kickoff/main-event",
     "/event/2276/vct-2025-emea-kickoff/main-event",
     "/event/2277/vct-2025-pacific-kickoff/main-event",
-    "/event/2281/valorant-masters-bangkok-2025/swiss-stage",
-    "/event/2347/vct-2025-americas-stage-1/group-stage",
-    "/event/2380/vct-2025-emea-stage-1/group-stage",
-    "/event/2379/champions-tour-2025-pacific-stage-1/group-stage",
-    "/event/2282/valorant-masters-toronto-2025/swiss-stage",
-    "/event/2501/vct-2025-americas-stage-2/group-stage",
-    "/event/2498/vct-2025-emea-stage-2/group-stage",
-    "/event/2500/vct-2025-pacific-stage-2/group-stage",
-    "/event/2283/valorant-champions-2025/group-stage",
     # 2026
     "/event/2682/vct-2026-americas-kickoff/main-event",
     "/event/2684/vct-2026-emea-kickoff/main-event",
     "/event/2683/vct-2026-pacific-kickoff/main-event",
-    "/event/2760/valorant-masters-santiago-2026/swiss-stage",
-    "/event/2860/vct-2026-americas-stage-1/group-stage",
-    "/event/2863/vct-2026-emea-stage-1/group-stage",
-    "/event/2775/vct-2026-pacific-stage-1/group-stage",
 ]
 
 # Currently active events for upcoming match scraper — update each season
@@ -49,6 +37,10 @@ vct_2022_start = "2022-03-30"
 vct_2023_start = "2023-02-13"
 vct_2024_start = "2024-02-16"
 vct_2024_end   = "2024-08-25"
+vct_2025_start = "2025-01-10"
+vct_2025_end   = "2025-10-05"
+vct_2026_start = "2026-01-15"
+vct_2026_end   = "2026-12-31"
 
 [betting]
 house_vig = 0.07
