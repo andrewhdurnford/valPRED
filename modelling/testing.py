@@ -22,7 +22,7 @@ def predict_series_outcomes(sds, series_winner_model):
 
     return_df = sds.copy(deep=True)
     X = return_df[FEATURES].fillna(0)
-    return_df["pred_win%"] = series_winner_model.predict_proba(X)[:, 0]
+    return_df["pred_win%"] = series_winner_model.predict_proba(X)[:, 1]
     return_df = return_df[["match_id", "t1", "t2", "date", "winner", "pred_win%", "odds", "best_odds", "worst_odds"]]
     return return_df.copy(deep=True)
 
