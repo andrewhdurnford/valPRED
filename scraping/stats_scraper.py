@@ -1,5 +1,6 @@
 import sqlite3
 import sys
+import threading
 from pathlib import Path
 from datetime import datetime
 
@@ -14,7 +15,21 @@ from paths import DB, MATCH_LINKS, NEW_MATCH_LINKS
 from market import vig_opposite_probability
 
 team_dict = {}
-maps = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset', 'Abyss']
+MAPS_FILE = ROOT / "data" / "game_data" / "maps.txt"
+DEFAULT_MAPS = ['Ascent', 'Bind', 'Breeze', 'Fracture', 'Haven', 'Icebox', 'Lotus', 'Pearl', 'Split', 'Sunset', 'Abyss']
+maps_lock = threading.Lock()
+
+
+def load_maps():
+    if MAPS_FILE.exists():
+        with open(MAPS_FILE, "r") as f:
+            loaded_maps = [line.strip() for line in f if line.strip()]
+        if loaded_maps:
+            return loaded_maps
+    return DEFAULT_MAPS.copy()
+
+
+maps = load_maps()
 series_headers = [
     "match_id", "t1", "t2", "winner",
     "t1_ban1", "t1_ban2", "t2_ban1", "t2_ban2",
@@ -83,6 +98,37 @@ def get_team(href):
     return id_match
 
 
+def append_map_name(map_name):
+    """Persist a newly seen map name so future scraper runs use the same id."""
+    try:
+        MAPS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if MAPS_FILE.exists():
+            with open(MAPS_FILE, "r") as f:
+                if map_name in {line.strip() for line in f if line.strip()}:
+                    return
+        needs_newline = MAPS_FILE.exists() and MAPS_FILE.stat().st_size > 0
+        if needs_newline:
+            with open(MAPS_FILE, "rb") as f:
+                f.seek(-1, 2)
+                needs_newline = f.read(1) != b"\n"
+        with open(MAPS_FILE, "a") as f:
+            if needs_newline:
+                f.write("\n")
+            f.write(f"{map_name}\n")
+    except OSError as e:
+        log(f"Could not persist newly discovered map '{map_name}' to {MAPS_FILE}: {e}")
+
+
+def get_map_index(map_name):
+    map_name = map_name.strip()
+    with maps_lock:
+        if map_name not in maps:
+            maps.append(map_name)
+            append_map_name(map_name)
+            log(f"Discovered new map '{map_name}'; assigned map id {len(maps) - 1}")
+        return maps.index(map_name)
+
+
 def parse_vetos(t1, t2, vetos):
     teams = set(re.findall(r'(\w+) (?:ban|pick)', vetos))
     teams = list(teams)
@@ -124,10 +170,10 @@ def parse_vetos(t1, t2, vetos):
         return "no vetos"
 
     return [
-        maps.index(t1_bans[0]), maps.index(t1_bans[1]),
-        maps.index(t2_bans[0]), maps.index(t2_bans[1]),
-        maps.index(t1_picks[0]), maps.index(t2_picks[0]),
-        maps.index(remaining_map),
+        get_map_index(t1_bans[0]), get_map_index(t1_bans[1]),
+        get_map_index(t2_bans[0]), get_map_index(t2_bans[1]),
+        get_map_index(t1_picks[0]), get_map_index(t2_picks[0]),
+        get_map_index(remaining_map),
     ]
 
 
@@ -287,20 +333,31 @@ def process_match_link(index, link, total):
         t2_past = parse_history(histories[1]) if len(histories) > 1 else None
         winner = score[0] > score[1]
 
-        odds_spans = soup.find_all("span", {"class": "match-bet-item-odds"})
         best_odds = 0
         worst_odds = 1
-        for odd in odds_spans:
-            val = float(odd.text[1:])
-            val = 1 / (val / 100) if val > 0 else 0
+        for book in soup.find_all("a", {"class": "match-bet-item"}):
+            if "mod-noodds" in book.get("class", []):
+                continue
+            short = book.find("div", {"class": "match-bet-item-return-short"})
+            if short is None:
+                continue
+            odds_span = short.find("span", {"class": "match-bet-item-odds"})
+            if odds_span is None:
+                continue
+            try:
+                decimal = float(odds_span.text.strip())
+            except ValueError:
+                continue
+            if decimal <= 1.0:
+                continue
+            p = 1 / decimal
             if not winner:
-                val = vig_opposite_probability(val)
-                if val is None:
+                p = vig_opposite_probability(p)
+                if p is None:
                     continue
-            if val > best_odds and val != 1:
-                best_odds = val
-            if val < worst_odds and val != 0:
-                worst_odds = val
+            if 0 < p < 1:
+                best_odds = max(best_odds, p)
+                worst_odds = min(worst_odds, p)
         if 0 < best_odds < 1 and 0 < worst_odds < 1:
             odds = (best_odds + worst_odds) / 2
         elif 0 < best_odds < 1:

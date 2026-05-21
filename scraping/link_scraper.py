@@ -47,6 +47,8 @@ team_cols = ['id', 'linkname', 'fullname', 'abbrev', 'secondary_id']
 request_attempts = cfg["scraping"].get("request_attempts", 2)
 connect_timeout = cfg["scraping"].get("connect_timeout_seconds", 5)
 read_timeout = cfg["scraping"].get("read_timeout_seconds", 30)
+request_delay = cfg["scraping"].get("request_delay_seconds", 0.2)
+request_backoff = cfg["scraping"].get("request_backoff_seconds", 2)
 max_workers = cfg["scraping"].get("max_workers", 4)
 event_workers = cfg["scraping"].get("event_workers", 2)
 request_headers = {
@@ -64,11 +66,15 @@ def log(message):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}", flush=True)
 
 
+class FetchError(RuntimeError):
+    pass
+
+
 # Get soup from url
-def fetch_data(url):
+def fetch_data(url, *, required=False):
     for attempt in range(1, request_attempts + 1):
         try:
-            time.sleep(0.2)
+            time.sleep(request_delay)
             response = requests.get(
                 url,
                 headers=request_headers,
@@ -79,9 +85,11 @@ def fetch_data(url):
         except requests.RequestException as e:
             if attempt == request_attempts:
                 log(f"Request failed for {url}: {e}")
+                if required:
+                    raise FetchError(f"Could not fetch required page: {url}") from e
                 return None
             log(f"Request attempt {attempt}/{request_attempts} failed for {url}: {e}")
-            time.sleep(2 ** (attempt - 1))
+            time.sleep(request_backoff * (2 ** (attempt - 1)))
 
 
 def write_team_rows(rows):
@@ -145,14 +153,13 @@ def write_links(path, links):
 
 def get_team_links(event):
     log(f"Fetching event teams: {event}")
-    soup = fetch_data(site + event)
+    soup = fetch_data(site + event, required=True)
     team_links = []
-    if soup:
-        teams = soup.find("div", {"class": "event-teams-container"})
-        if teams:
-            for team in teams.find_all("a", {"class": "event-team-name"}):
-                href = team.get("href")
-                team_links.append(href[5:]) 
+    teams = soup.find("div", {"class": "event-teams-container"})
+    if teams:
+        for team in teams.find_all("a", {"class": "event-team-name"}):
+            href = team.get("href")
+            team_links.append(href[5:])
     log(f"Found {len(team_links)} teams for event: {event}")
     return team_links
 
@@ -237,6 +244,7 @@ def scrape_all_games(start_date, events):
         future_to_region = {executor.submit(get_team_links, url): url for url in events}
         total_events = len(future_to_region)
         completed = 0
+        failed_events = []
         for future in as_completed(future_to_region):
             region = future_to_region[future]
             try:
@@ -244,8 +252,12 @@ def scrape_all_games(start_date, events):
             except Exception as exc:
                 log(f'{region} generated an exception: {exc}')
                 traceback.print_exc()
+                failed_events.append(region)
             completed += 1
             log(f"Event team fetch progress: {completed}/{total_events}")
+
+    if failed_events:
+        raise RuntimeError(f"Aborting match-link scrape after failed event fetches: {', '.join(failed_events)}")
 
     log(f"Collected {len(set(team_links))} unique team links")
     return scrape_team_match_links(start_date, team_links)
@@ -292,6 +304,7 @@ def get_all_tier1_teams():
     with ThreadPoolExecutor(max_workers=event_workers) as executor:
         future_to_event = {executor.submit(get_event_teams, event): event for event in tier1_events}
         completed = 0
+        failed_events = []
         for future in as_completed(future_to_event):
             event = future_to_event[future]
             region = region_from_event(event)
@@ -300,6 +313,7 @@ def get_all_tier1_teams():
             except Exception as exc:
                 log(f'{event} generated an exception: {exc}')
                 traceback.print_exc()
+                failed_events.append(event)
                 teams = []
             for team in teams:
                 row = list(team[:len(team_cols)])
@@ -307,6 +321,8 @@ def get_all_tier1_teams():
                 rows.append(row + [region])
             completed += 1
             log(f"Tier 1 metadata event progress: {completed}/{len(tier1_events)}")
+    if failed_events:
+        raise RuntimeError(f"Aborting team metadata refresh after failed event fetches: {', '.join(failed_events)}")
     write_team_rows(rows)
 
 def get_tier1_matchlinks():
