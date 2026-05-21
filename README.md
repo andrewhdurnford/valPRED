@@ -1,63 +1,82 @@
 # Valorant Match Predictor
 
-## Overview
-A machine learning-driven predictor designed to estimate the outcomes of Valorant matches by leveraging historical data, team statistics, and advanced predictive modeling techniques. This project uses a combination of GBMs and statistical analysis to model match outcomes, map selections, and profit potential through simulated betting strategies.
+A machine learning predictor for Valorant esports matches. Scrapes historical match data from vlr.gg, engineers team-form features, trains a gradient boosted classifier, and simulates a betting strategy against historical market odds.
 
-## Table of Contents
-1. [Project Objectives](#project-objectives)
-2. [Methodology](#methodology)
-   - [Data Gathering](#data-gathering)
-   - [Data Processing](#data-processing)
-   - [Modeling](#modeling)
-   - [Results and Simulations](#results-and-simulations)
-3. [Installation and Setup](#installation-and-setup)
-4. [Future Improvements](#future-improvements)
-5. [Contributions](#contributions)
+## How it works
 
-## Project Objectives
-The primary goal of this project is to develop a predictive model for Valorant matches, utilizing a data-driven approach to estimate match outcomes, predict map selections, and assess the profitability of simulated betting strategies.
+### Data collection
 
-## Methodology
+Match stats are scraped from vlr.gg for all Tier 1 VCT events (Americas, EMEA, Pacific) going back to 2022, plus Tier 2 matches involving Tier 1 teams. Data is stored in SQLite (`data/valpred.db`). VCT event URLs are configured in `config.toml` and updated each season.
 
-### Data Gathering
-- **League Selection**: Data was gathered from top-tier Valorant leagues, including franchised (Tier 1) and challengers leagues (Tier 2) worldwide.
-- **Statistics Collection**: Basic game stats were scraped for each match due to limited advanced metrics availability. This ensures broad coverage across diverse leagues.
-- **Data Limitations**: Advanced stats became available in franchised leagues only in 2023 and in Chinese leagues in 2024. This limitation required focusing on fundamental stats across all leagues.
+For each series the scraper records: teams, winner, map wins, and per-team aggregate stats (rating, ACS, kills, deaths, assists, first kills, first deaths).
 
-### Data Processing
-- **Match Format Analysis**: Valorant matches follow various formats, such as Best of 1, Best of 3, or Best of 5, with teams selecting and banning maps for each match.
-- **Statistical Transformation**: Raw stats were converted into more descriptive metrics (e.g., kills per round) to improve model interpretability.
-- **Map Playrate Calculation**: Playrates of each map were calculated based on historical data, giving insight into map preferences for each team.
-- **Elo Rating System**: An Elo rating system was implemented to give a general measure of each team’s relative strength.
-- **Parameter selection**: Through experimentation, it was found that more complex parameters and statistics proved too unreliable, and sticking to a few, simpler datapoints produced much more reliable results
+### Feature engineering
 
-### Modeling
-- **Map Selection Prediction**: A GBM model was trained on map pick/ban data to predict likely maps while allowing for minor prediction inaccuracies.
-- **Winrate Prediction**: Another GBM was developed to predict win rates on specific maps, using calculated advanced stats and team deltas.
-- **Winshares Calculation**: Winshares were computed by multiplying the win probability for each map by its likelihood of being picked.
-- **Series Outcome Prediction**: The overall match winrate was calculated based on winshare ratios and adjusted Elo ratings using a final GBM model.
-- **Model Optimization**: Grid parameter search was employed to optimize each GBM for accuracy.
+Seven features are computed per series:
 
-### Results and Simulations
-- **Leagues**: Only the tier 1 leagues were predictable enough to reliably bet on, this is likely due to the lower level of tactics and strategy below the tier 1 level, resulting in much more form-based and unpredictable matchups, as well as map strength being less of a factor.
-- **Simulation Timeframe**: Models were trained on data from 2022 to early 2024, with simulations run on the 2024 season's remaining data.
-- **Betting Strategy**: A simulated betting approach was tested with a starting bankroll of $1000, betting 5% per profitable match.
-- **Simulated Outcomes**:
-   - **Average Odds**: Simulations using average odds produced an EV of ~1.2, yielding a profit range of $1000-$2000 for the 2024 season.
-   - **Max/Min Odds**: Higher EV of ~1.4 with a profit range of $2000-$3000 over the 2024 season.
-   - **Comments**: Regardless of the method of odds used, it is clear that esports betting websites heavily favour the favourite; the model heavily favoured bets on the underdog, with 72% of bets placed on underdogs in the Average Odds simulation, and 76% placed on underdogs in the Min/Max Odds simulation.
-   ![Graph of Bankroll vs Bet count](data/images/Bankroll.png)
+| Feature | Description |
+|---|---|
+| `elo_diff` | Difference in Elo ratings at time of match. Standard K=32 system, seeded at 1500. |
+| `net_h2h` | Head-to-head series win differential between the two teams. |
+| `past_diff` | Difference in maps played in prior VCT seasons (proxy for experience). |
+| `rating_diff` | Rolling mean combat rating diff over each team's last 10 series. |
+| `acs_diff` | Rolling mean average combat score diff. |
+| `fk_net_diff` | Rolling mean net first-contact advantage diff: `(FK - FD)` per team, then differenced. Captures which team wins the opening duel more consistently. |
+| `winrate_diff` | Rolling mean series win rate diff over last 10 series. |
 
-### Prerequisites
-- Ensure Python 3.x is installed on your system.
-- pip install requirements.txt
+Rolling features use a window of 10 series with `min_periods=3`, computed with `closed='left'` to prevent leakage. The full dataset (including T2 matches) is used to warm up rolling windows; only T1 regional matches are used for training and testing.
 
-## Future Improvements
-- Integration of advanced metrics as they become available across leagues.
-- Improved map selection model to account for new/cycled maps with low data availability.
-- Improved elo system to make bets on tier 2 matches profitable.
+### Model
 
-## Contributions
-- All match stats and data sourced from https://www.vlr.gg/
-- Game data such as agents, map pool, and maps sourced from https://valorant.fandom.com/wiki/VALORANT_Wiki
+A single `GradientBoostingClassifier` predicts the series winner (t1 or t2). The pipeline:
 
+1. **Hyperparameter search** — `RandomizedSearchCV` with `TimeSeriesSplit(n_splits=5)` ensures folds always train on the past and test on the future. Best params are cached in `models/params/series.pkl` to skip re-search on subsequent runs.
+2. **Probability calibration** — GBMs compress predicted probabilities towards 0.5, making raw scores unreliable for EV calculations. The most recent 20% of training data (chronologically) is held back to fit a Platt scaling layer (logistic regression on the GBM's raw scores). This maps compressed scores to real win probabilities.
+
+### Betting simulation
+
+The backtest compares the model's calibrated win probability against the market's implied probability (derived from the house odds adjusted for the configured vig). A bet is placed when the model's probability exceeds the market's implied probability — i.e. when the model thinks the market is mispricing the match.
+
+Two simulations are run: one using average market odds and one using best/worst odds across books.
+
+### Results
+
+Trained on 2023–2025 data, backtested on 2026 kickoff:
+
+| Simulation | Bets | Bankroll | Accuracy | EV | Underdog % |
+|---|---|---|---|---|---|
+| Average odds | 113 | $1,176 | 40.7% | +0.03 | 93.8% |
+| Best odds | 123 | $1,429 | 41.5% | +0.07 | 91.1% |
+
+Starting bankroll: $1,000. Fixed $50 bet size. The model heavily favours underdogs — esports books strongly overprice favourites.
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+python db_init.py          # create SQLite schema (run once)
+```
+
+## Running
+
+```bash
+# Scrape match data (takes a while — ~4000+ pages)
+python scraping/main.py
+
+# Train model and run backtest
+python modelling/main.py
+
+# Predict upcoming matches
+python modelling/predict.py
+```
+
+Update `tier1_events` and `upcoming_events` in `config.toml` at the start of each season.
+
+## Stack
+
+Python, BeautifulSoup, pandas, scikit-learn (GradientBoostingClassifier), joblib, SQLite
+
+## Data sources
+
+- Match stats: https://www.vlr.gg/
+- Game data (maps, agents): https://valorant.fandom.com/wiki/VALORANT_Wiki
