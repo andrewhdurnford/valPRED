@@ -79,7 +79,7 @@ def remove_cn(df, con=None):
 
 # --- Rolling team-form features ---
 
-ROLLING_FEATURES = ["rating_diff", "acs_diff", "fkpm_diff", "fdpm_diff", "winrate_diff"]
+ROLLING_FEATURES = ["rating_diff", "acs_diff", "fk_net_diff", "winrate_diff"]
 
 
 def compute_rolling_features(df, window=10, min_periods=3):
@@ -95,7 +95,7 @@ def compute_rolling_features(df, window=10, min_periods=3):
     onto the historical series df with stats columns as NaN — `closed='left'`
     means a row's own stats never enter its own feature.
 
-    Adds: rating_diff, acs_diff, fkpm_diff, fdpm_diff, winrate_diff.
+    Adds: rating_diff, acs_diff, fk_net_diff, winrate_diff.
     Rows where a team has fewer than `min_periods` prior series get NaN diffs.
     """
     df = df.copy()
@@ -142,8 +142,7 @@ def compute_rolling_features(df, window=10, min_periods=3):
 
     df["rating_diff"] = df["t1_r_rating"] - df["t2_r_rating"]
     df["acs_diff"] = df["t1_r_acs"] - df["t2_r_acs"]
-    df["fkpm_diff"] = df["t1_r_fkpm"] - df["t2_r_fkpm"]
-    df["fdpm_diff"] = df["t1_r_fdpm"] - df["t2_r_fdpm"]
+    df["fk_net_diff"] = (df["t1_r_fkpm"] - df["t1_r_fdpm"]) - (df["t2_r_fkpm"] - df["t2_r_fdpm"])
     df["winrate_diff"] = df["t1_r_win"] - df["t2_r_win"]
 
     return df
