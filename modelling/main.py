@@ -25,18 +25,22 @@ def init():
 
 
 def _load_series_with_features():
-    """Load full series table, filter to tier-1 regional non-CN, and attach
-    rolling features. Returns the dataframe with all date rows intact so the
-    caller can window after features are computed.
+    """Load full series table, compute rolling features on all data, then filter
+    to tier-1 regional non-CN rows for training/testing.
+
+    Rolling features and Elo are computed on the full dataset (including T2
+    matches) so that a team's form window is populated from all their games,
+    not just T1 opponents. Filtering happens after so T2 rows don't end up in
+    the training set.
     """
     with sqlite3.connect(DB) as con:
         df = pd.read_sql("SELECT * FROM series", con)
+        df["past_diff"] = df["t1_past"].fillna(0) - df["t2_past"].fillna(0)
+        df = compute_rolling_features(df)
         df = get_tier1(df, con)
         df = remove_cn(df, con)
         df = get_regional(df, con)
 
-    df["past_diff"] = df["t1_past"].fillna(0) - df["t2_past"].fillna(0)
-    df = compute_rolling_features(df)
     return df
 
 
@@ -74,9 +78,9 @@ if __name__ == "__main__":
     init()
     train_series_win_model(
         cfg["modelling"]["vct_2023_start"],
-        cfg["modelling"]["vct_2024_start"],
+        cfg["modelling"]["vct_2026_start"],
     )
     test_series_winner(
-        cfg["modelling"]["vct_2024_start"],
-        cfg["modelling"]["vct_2024_end"],
+        cfg["modelling"]["vct_2026_start"],
+        cfg["modelling"]["vct_2026_end"],
     )
