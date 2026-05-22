@@ -18,10 +18,14 @@ def _valid_market_probability(probability):
 
 
 def predict_series_outcomes(sds, series_winner_model):
-    from training import FEATURES
+    from training import get_series_model_features
 
     return_df = sds.copy(deep=True)
-    X = return_df[FEATURES].fillna(0)
+    features = get_series_model_features(series_winner_model)
+    missing = [c for c in features if c not in return_df.columns]
+    if missing:
+        raise ValueError(f"Prediction data is missing required series features: {missing}")
+    X = return_df[features].fillna(0)
     return_df["pred_win%"] = series_winner_model.predict_proba(X)[:, 1]
     return_df = return_df[["match_id", "t1", "t2", "date", "winner", "pred_win%", "odds", "best_odds", "worst_odds"]]
     return return_df.copy(deep=True)
